@@ -6,6 +6,17 @@ play it back faster and see if I can improve training speed
 but all possible state action values on the tree, recursively called,
 ( can be used to get the probability of random selection of each?)
 
+
+
+# Testing:/
+    # read in terrain
+    # for num samples:
+        # for inner dqn loop:
+            # select with boltzman sampling
+            # record probability of that selection
+        # output reward estimate for that design
+    # take 5 most common robots and their reward estimates
+         
 '''
 
 
@@ -32,7 +43,7 @@ device = torch.device('cpu')
 
 N_ACTIONS = num_module_types
 MAX_N_MODULES = 3
-NUM_ENVS = 1 # number of environments to run in parallel
+NUM_ENVS = 3 # number of environments to run at the same time for a single terrain
 
 
 ### Initialize and load policy
@@ -43,12 +54,25 @@ terrain_grid_shape = sim_runner.terrain_grid_shape
 
 
 folder = '09242020/'
+folder = '09252020/'
 # initiate the policy network and target network. 
-policy_net = dqn(terrain_grid_shape, max_num_modules = MAX_N_MODULES).to(device)
-PATH = os.path.join(cwd, folder+'policy_net_weights.pt')
+
+PATH = os.path.join(cwd, folder+'policy_net_params.pt')
+save_dict = dict()
 
 save_dict = torch.load(PATH, map_location=lambda storage, loc: storage)
-# policy_net.load_state_dict( save_dict)
+
+policy_net = dqn( 
+    terrain_in_shape = save_dict['terrain_in_shape'] ,
+    n_module_types= save_dict['n_module_types'] ,
+    max_num_modules=save_dict['max_num_modules'] ,
+    kernel_size=save_dict['kernel_size'],
+    n_channels= save_dict['n_channels'],
+    n_fc_layers=save_dict['n_fc_layers'],
+    env_vect_size=save_dict['env_vect_size'],
+    hidden_layer_size=save_dict['hidden_layer_size'])
+
+policy_net.load_state_dict( save_dict['policy_net_state_dict'])
 print('Reloaded weights from ' + PATH)
 
 policy_net.eval()
@@ -62,8 +86,6 @@ def select_multinomial_action(designs, terrains):
         actions_out = policy_net(designs, terrains)
         # Scale by a temperature factor. as temperature gets lower, tends towards uniform outputs. as higher, tends towards true max. 
         actions_softmax = F.softmax(actions_out, dim=-1)
-    
-
 
     action_inds = torch.multinomial(actions_softmax, 1, replacement=True)
     action_inds = action_inds.squeeze()
@@ -158,20 +180,16 @@ terrain_block_heights = np.linspace(
         sim_runner.MAX_BLOCK_HEIGHT_HIGH, 3)
 for it in range(len(terrain_block_heights)):
     terrain_block_height = terrain_block_heights[it] 
-    terrains = sim_runner.randomize_terrains(
+    terrain = sim_runner.randomize_terrains(
         terrain_block_height=terrain_block_height)
 
-    # terrain_means = []
-    terrain_maxes = []
-    for i_env in range(NUM_ENVS):
-        # terrain_means.append(torch.mean(terrains[i_env]).numpy().item())
-        terrain_maxes.append(torch.max(terrains[i_env]).numpy().item())
+    terrain_max = torch.max(terrain).numpy().item()
     # print('terrain means: ' + str(terrain_means))
-    print('terrain max: ' + str(terrain_maxes))
+    print('terrain max: ' + str(terrain_max))
 
 
     n_samples = 100
-    terrains_rep = terrains.expand(n_samples,-1, -1, -1)
+    terrains_rep = terrain.expand(n_samples,-1, -1, -1)
     # print(terrains.shape)
     # print(terrains_rep.shape)
 
@@ -194,10 +212,10 @@ for it in range(len(terrain_block_heights)):
         # terrains = sim_runner.randomize_terrains(
         #     terrain_block_height=terrain_block_height)
 
-        sim_runner.load_robots([test_robot_name])
+        sim_runner.load_robots(test_robot_name)
         r = sim_runner.run_sims(video_name_addition = str(it))
         # r = torch.tensor([1])
-        test_robot_rewards.append(r)
+        test_robot_rewards.append(r.mean()) # mean of multiple runs
 
         indices = [i for i, x in enumerate(robot_names_out) if x == test_robot_name]
         # name_count.append(robot_names_out.count(test_robot_name))

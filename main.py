@@ -48,13 +48,13 @@ REPLAY_MEMORY_SIZE = 5000
 LR_INIT = 1e-4
 N_ACTIONS = num_module_types
 MAX_N_MODULES = 3
-NUM_ENVS = 1 # number of environments to run in parallel
+NUM_ENVS = 3 # number of environments to run in parallel
 SIM_TIME_STEPS = 100
 NUM_EPISODES = 10000
 TARGET_UPDATE = 50 # how many episodes to delay target net from policy net
 BATCH_SIZE = 200 # number of samples in a batch for dqn learning
 # BATCH_SIZE = 10 # number of samples in a batch for dqn learning
-N_TRAIN_ITERS = 5 # number of training steps after each sim batch
+N_TRAIN_ITERS = 10 # number of training steps after each sim batch
 BOLTZMANN_TEMP_START = 10 
 BOLTZMANN_TEMP_MIN = 0.5
 BOLTZMANN_TEMP_DECAY_CONST = 1./2000 # T = T0*exp(-c*episode) e.g. 10*np.exp(-np.array([0, 1000, 5000])/1000)
@@ -68,17 +68,40 @@ terrain_grid_shape = sim_runner.terrain_grid_shape
 ### Initialize DQN and replay buffer
 
 # initiate the policy network and target network. 
-policy_net = dqn(terrain_grid_shape, max_num_modules = MAX_N_MODULES).to(device)
-target_net = dqn(terrain_grid_shape, max_num_modules = MAX_N_MODULES).to(device)
-PATH = os.path.join(cwd, 'policy_net_weights.pt')
 
-if RELOAD_WEIGHTS:
-    if os.path.exists(PATH):
-        save_dict = torch.load(PATH)
-        policy_net.load_state_dict( save_dict)
-        print('Reloaded weights from ' + PATH)
+PATH = os.path.join(cwd, 'policy_net_params.pt')
+
+if RELOAD_WEIGHTS and os.path.exists(PATH):
+    save_dict = torch.load(PATH)
+    PATH = os.path.join(cwd, 'policy_net_params.pt')
+    save_dict = dict()
+
+    policy_net = dqn( 
+        terrain_in_shape = save_dict['terrain_in_shape'] ,
+        n_module_types= save_dict['n_module_types'] ,
+        max_num_modules=save_dict['max_num_modules'] ,
+        kernel_size=save_dict['kernel_size'],
+        n_channels= save_dict['n_channels'],
+        n_fc_layers=save_dict['n_fc_layers'],
+        env_vect_size=save_dict['env_vect_size'],
+        hidden_layer_size=save_dict['hidden_layer_size']).to(device)
+    target_net = dqn( 
+        terrain_in_shape = save_dict['terrain_in_shape'] ,
+        n_module_types= save_dict['n_module_types'] ,
+        max_num_modules=save_dict['max_num_modules'] ,
+        kernel_size=save_dict['kernel_size'],
+        n_channels= save_dict['n_channels'],
+        n_fc_layers=save_dict['n_fc_layers'],
+        env_vect_size=save_dict['env_vect_size'],
+        hidden_layer_size=save_dict['hidden_layer_size']).to(device)
+    policy_net.load_state_dict( save_dict['policy_net_state_dict'])
+    print('Reloaded weights from ' + PATH)
 else:
     print('Creating ' + PATH)
+    policy_net = dqn(terrain_grid_shape, 
+                 max_num_modules = MAX_N_MODULES).to(device)
+    target_net = dqn(terrain_grid_shape, 
+                 max_num_modules = MAX_N_MODULES).to(device)
 
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
@@ -141,7 +164,7 @@ def run_episode(is_training_episode, terrains,
 
 
     # initialize empty robot batch
-    designs = torch.zeros(NUM_ENVS, N_ACTIONS*MAX_N_MODULES + MAX_N_MODULES)
+    designs = torch.zeros(1, N_ACTIONS*MAX_N_MODULES + MAX_N_MODULES)
     designs[:, N_ACTIONS*MAX_N_MODULES] = 1 # indicate which port adding now
     
     # loop dqn until done:
@@ -159,39 +182,41 @@ def run_episode(is_training_episode, terrains,
 
         # add a module
         next_designs = torch.zeros_like(designs)
-        for i_env in range(NUM_ENVS):
+        for i_env in range(1):
             next_designs[i_env,:] = add_module(
                                     designs[i_env,:], 
                                     i_dqn, MAX_N_MODULES,
                                     actions[i_env])
 
-        rewards = torch.zeros(NUM_ENVS) # adding a module has no cost for now
+        reward = torch.zeros(1) # adding a module has no cost for now
 
         if i_dqn==(MAX_N_MODULES-1): # we are done
             non_final = torch.tensor(0, dtype=torch.bool)
 
             # convert one-hot into list module names
-            robot_names_list = []
-            for i_env in range(NUM_ENVS):
+            for i_env in range(1):
                 # print(next_designs[i_env])
                 mv = next_designs[i_env,:N_ACTIONS*MAX_N_MODULES].reshape(MAX_N_MODULES,N_ACTIONS)
                 # print(mv)
                 robot_name = module_vector_list_to_robot_name(mv)
-                robot_names_list.append(robot_name)
 
             if is_training_episode:
                 # run policy
                 # robot_names_list = ['lll']
-                sim_runner_now.load_robots(robot_names_list)
-                rewards += sim_runner_now.run_sims()
-                # print('Ran simulations of ' + str(robot_names_list) +
-                #     ' rewards ' + str(rewards))
+                sim_runner_now.load_robots(robot_name)
+                rewards = sim_runner_now.run_sims()
+                reward += rewards.mean()
+                if sim_runner_now.is_valid:
+                    print('Ran simulations of ' + str(robot_name) +
+                        ' rewards ' +
+                            np.array2string(
+                            rewards.numpy(),precision=1))
 
                 if RECORD_REWARDS:
                     # keep a running list of data seen so far 
                     # MIGHT BLOW UP MEMORY- might need to keep mean and std deve instead
                     for i_env in range(NUM_ENVS):
-                        key = robot_names_list[i_env]
+                        key = robot_name
                         if key not in reward_record_dict:
                             reward_record_dict[key] = list()
                         reward_now = rewards[i_env].item()
@@ -208,20 +233,21 @@ def run_episode(is_training_episode, terrains,
 
         if is_training_episode:
             # add to replay buffer
-            for i_env in range(NUM_ENVS):
+            for i_env in range(1):
                 action = actions[i_env].unsqueeze(0).clone()
-                reward = rewards[i_env].unsqueeze(0).clone()
+                # reward = reward.unsqueeze(0).clone()
+                reward = reward.clone()
                 replay_memory.push(designs[i_env].clone(), terrains[i_env].clone(),
                     action, next_designs[i_env].clone(), reward, non_final.clone())
                 #('state', 'terrain', 'action', 'next_state', 'reward', 'done'))
         else:
-            print('designs')
-            print(str(designs.cpu().numpy()))
+            # print('designs')
+            # print(str(designs.cpu().numpy()))
             print('state_action_values')
             print(str(state_action_values.cpu().numpy()))
             print('Actions ' + str(actions.cpu().numpy()))
-            print('next_designs')
-            print(str(next_designs.cpu().numpy()))
+            # print('next_designs')
+            # print(str(next_designs.cpu().numpy()))
         
         # hold designs for next step
         designs = next_designs
@@ -239,21 +265,19 @@ def run_episode(is_training_episode, terrains,
 
     if not(is_training_episode):
         # terrain_means = []
-        terrain_maxes = []
-        for i_env in range(NUM_ENVS):
             # terrain_means.append(torch.mean(terrains[i_env]).numpy().item())
-            terrain_maxes.append(torch.max(terrains[i_env]).numpy().item())
+        terrain_max=torch.max(terrains).numpy().item()
         # print('terrain means: ' + str(terrain_means))
-        print('terrain max: ' + str(terrain_maxes))
-        print('names list:' + str(robot_names_list))
+        print('terrain max: ' + str(terrain_max))
+        print('robot_name: ' + str(robot_name))
 
 # For outer iteration:
 for i_episode in range(NUM_EPISODES):
 
     # select randomized batch of terrains
-    terrains = sim_runner.randomize_terrains()
+    terrain = sim_runner.randomize_terrains()
     temp = boltzmann_temp(i_episode)  # anneals temp
-    run_episode(True,terrains,sim_runner,
+    run_episode(True,terrain,sim_runner,
           current_boltzmann_temp =  temp)
        
 
@@ -268,19 +292,7 @@ for i_episode in range(NUM_EPISODES):
             # (a final state would've been the one after which simulation ended)
             non_final_mask = torch.stack(batch.non_final)
             # indexing with dtype torch.uint8 is deprecated, cast to dtype torch.bool
-            # non_final_mask = non_final_mask.type(torch.bool) 
-            
-                                                    
-            # non_final_next_states = batch.next_state[non_final_mask,:]
-    # non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-    #                                       batch.next_state)), device=device, dtype=torch.uint8) 
-                                            
-            # non_final_next_states = torch.stack([s for (s,d) in 
-            #                             zip(batch.next_state,batch.done)
-            #                                     if not(d)]).to(device)
-            # non_final_terrains = torch.stack([s for (s,d) in 
-            #                             zip(batch.terrain,batch.done)
-            #                                     if not(d)]).to(device)
+
             state_batch = torch.stack(batch.state).to(device)
             next_state_batch = torch.stack(batch.next_state).to(device)
             terrain_batch = torch.stack(batch.terrain).to(device)
@@ -302,24 +314,12 @@ for i_episode in range(NUM_EPISODES):
                 next_state_values[non_final_mask] = target_net(
                     non_final_next_states, non_final_terrains).max(1)[0].detach()
 
+            # print(next_state_values.shape)
+            # print(reward_batch.shape)
+            # print(state_action_values.shape)
+
             # Compute the expected Q values
             expected_state_action_values = next_state_values + reward_batch
-
-            # print(state_batch.shape)
-            # print(state_batch)
-            # print(action_batch.shape)
-            # print(action_batch)
-            # print(terrain_batch.shape)
-            # print(reward_batch.shape)
-            # print(reward_batch)
-            # print("next state nonfinal shape")
-            # print(next_state_values[non_final_mask].shape)
-            # print('next_state_values shape')
-            # print(next_state_values.shape)
-            # print('reward_batch shape')
-            # print(reward_batch.shape)
-            # print('value shapes')
-
 
 
             # Compute Huber loss
@@ -367,46 +367,50 @@ for i_episode in range(NUM_EPISODES):
 
 
     # if (i_episode % 20 == 0):
-    if (i_episode % 100 == 0):
+    if (i_episode % 100 == 0 and i_episode>0):
         print('Boltzmann temp at ep ' + str(i_episode) + ': ' + str(temp))
         print('--- eval at ep ' + str(i_episode) + ' ---')
         for terrain_block_height in np.linspace(
                 sim_runner.MAX_BLOCK_HEIGHT_LOW,
                 sim_runner.MAX_BLOCK_HEIGHT_HIGH, 3):
-            terrains = sim_runner.randomize_terrains(
+            terrain = sim_runner.randomize_terrains(
                 terrain_block_height=terrain_block_height)
-            run_episode(False,terrains) # for validation, don't simulate or store anything,
+            run_episode(False,terrain) # for validation, don't simulate or store anything,
             # run with a range of terrains to check output
 
             # compare with a range of real robots:
             test_robot_list = ['lll', 'lwl', 'wnw']
             test_robot_rewards = []
+            out_str ='Test rewards: '
             for test_robot_name in test_robot_list:
-                sim_runner.load_robots([test_robot_name])
+                sim_runner.load_robots(test_robot_name)
                 test_robot_rewards.append(sim_runner.run_sims())
+                out_str += np.array2string(
+                    test_robot_rewards[-1].numpy(),precision=1)
             print('Test robots:' + str(test_robot_list))
-            print('Test rewards:' + str(test_robot_rewards))
+            print( out_str )
 
             print('-----------')
 
     if (i_episode % 100 == 0):
-        PATH = os.path.join(cwd, 'policy_net_weights.pt')
-        torch.save(policy_net.state_dict(), PATH)
+        PATH = os.path.join(cwd, 'policy_net_params.pt')
+        save_dict = dict()
+        save_dict['policy_net_state_dict'] = policy_net.state_dict()
+        save_dict['terrain_in_shape'] = policy_net.terrain_in_shape
+        save_dict['n_module_types'] = policy_net.n_module_types
+        save_dict['max_num_modules'] = policy_net.max_num_modules
+        save_dict['kernel_size']= policy_net.kernel_size
+        save_dict['n_channels']=policy_net.n_channels
+        save_dict['n_fc_layers']=policy_net.n_fc_layers
+        save_dict['env_vect_size']=policy_net.env_vect_size
+        save_dict['hidden_layer_size']=policy_net.hidden_layer_size
+
+        torch.save(save_dict, PATH)
         # PATH2 = os.path.join(cwd, 'rewards_from_simulation.pt')
         # torch.save(reward_record_dict, PATH2)
 
 print('Done training')
 # Done training
-
-# Testing:/
-    # read in terrain
-    # for num samples:
-        # for inner dqn loop:
-            # select with boltzman sampling
-            # record probability of that selection
-        # output reward estimate for that design
-    # take 5 most common robots and their reward estimates
-         
 
 
 

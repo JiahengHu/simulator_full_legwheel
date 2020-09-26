@@ -1,0 +1,23 @@
+pybullet build time: Sep 22 2020 00:55:20
+Reloaded weights from /home/cobracommander/mobile_design_RL/09252020/policy_net_weights.pt
+terrain max: [0.009877076372504234]
+Test robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Test rewards:[ 5.01  6.55 10.77  6.86  1.66 10.16  4.92 11.18  4.21  6.93  8.01  7.91]
+Test reward dist: [0.06 0.08 0.13 0.08 0.02 0.12 0.06 0.13 0.05 0.08 0.1  0.09]
+Output count dist:[0.07 0.11 0.07 0.02 0.02 0.09 0.11 0.13 0.11 0.07 0.11 0.11]
+Output probs :    [0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.03]
+-----------
+terrain max: [0.0533764623105526]
+Test robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Test rewards:[4.95 4.34 4.81 6.79 1.98 2.92 2.94 5.08 2.76 3.02 2.82 2.23]
+Test reward dist: [0.11 0.1  0.11 0.15 0.04 0.07 0.07 0.11 0.06 0.07 0.06 0.05]
+Output count dist:[0.14 0.1  0.12 0.16 0.06 0.02 0.08 0.06 0.08 0.06 0.04 0.1 ]
+Output probs :    [0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.03]
+-----------
+terrain max: [0.09790119528770447]
+Test robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Test rewards:[4.98 4.08 6.78 5.26 3.66 2.06 4.04 5.62 3.55 5.71 4.41 4.13]
+Test reward dist: [0.09 0.08 0.12 0.1  0.07 0.04 0.07 0.1  0.07 0.11 0.08 0.08]
+Output count dist:[0.14 0.17 0.08 0.06 0.06 0.08 0.03 0.06 0.08 0.11 0.11 0.03]
+Output probs :    [0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.04 0.03]
+-----------

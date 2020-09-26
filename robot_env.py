@@ -95,9 +95,9 @@ class robot_env:
         startPosition=[0,0,0.3] # high enough that nothing touches the ground
         startOrientationRPY = [0,0,0]
         if randomize_xyyaw:
-            startPosition[0]+= (np.random.rand()*2-1)*0.25
-            startPosition[1]+= (np.random.rand()*2-1)*0.25
-            startOrientationRPY[2] += (np.random.rand()*2-1)*pi
+            startPosition[0]+= (np.random.rand()*2-1)*0.02
+            startPosition[1]+= (np.random.rand()*2-1)*0.02
+            startOrientationRPY[2] += (np.random.rand()*2-1)*0.02
 
         # allow for starting yaw to be overridden by user
         if start_yaw is not None: 

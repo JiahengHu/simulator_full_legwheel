@@ -8,8 +8,8 @@ class dqn(nn.Module):
     def __init__(self, terrain_in_shape,
         n_module_types = 3, 
         max_num_modules = 3, 
-        kernel_size=3, 
-        n_channels=2, 
+        kernel_size= 5, 
+        n_channels = 2, 
         n_fc_layers = 4,
         env_vect_size=10,
         hidden_layer_size = 100):

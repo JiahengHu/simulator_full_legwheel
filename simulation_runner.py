@@ -2,6 +2,10 @@
 loads the policy gnn and contains multiple 
 simulation environments
 
+todo: run a few of the same robots in the same env each time, using
+batches in the policy, to get an expectation of reward for the robot.
+
+
 '''
 
 # load libraries
@@ -25,15 +29,13 @@ class simulation_runner(object):
         self.num_envs = num_envs
         # self.terrain_grid_shape = [1,20,10] # deltax, deltay
         self.terrain_grid_shape = [1,50,20] # deltax, deltay
-        self.robot_names_list = []
+        self.robot_name = [] # all envs have the same robot loaded
         self.terrain_grid = []
         self.max_xy = [9,2] # defines size of obstacle course. TODO: get from terrain randomizer.
         self.reward_function = 'Simulation'
         # self.reward_function = 'Recorded Simulation'
         # self.reward_function = 'Testing Proxy'
-        self.modules_list = []
-        self.attachments_list = []
-        self.module_action_len_list = []
+        self.modules_gnn = []
         self.saved_data = None
         self.normal_distribution = torch.distributions.normal.Normal(0, 1)
 
@@ -105,32 +107,35 @@ class simulation_runner(object):
 
 
     def measure_terrains(self):
-        terrain_grid = torch.zeros([self.num_envs]+self.terrain_grid_shape)
+        terrain_grid = torch.zeros([1]+self.terrain_grid_shape)
 
         if self.reward_function == 'Testing Proxy' or self.reward_function == 'Recorded Simulation':
             # for testing:
-            for i_env in range(self.num_envs):
-                if np.random.rand()>0.5:
-                    terrain_grid[i_env] += 0.1 # make terrain entries large sometimes for test
+            if np.random.rand()>0.5:
+                terrain_grid += 0.1 # make terrain entries large sometimes for test
             self.terrain_grid = terrain_grid
 
         elif self.reward_function == 'Simulation':
             # using ray casting to get heights of points
 
-            for i_env in range(self.num_envs):
+            # NOTE: Assumes that the terrains in the envs are all the same.
+            
+            i_env = 0
+            # for i_env in range(self.num_envs):
 
-                rays_batch = self.envs[i_env].p.rayTestBatch(
-                    rayFromPositions = self.rayFromPositions,
-                    rayToPositions = self.rayToPositions)
-                n_pts = self.terrain_grid_shape[1]*self.terrain_grid_shape[2]
-                heights = torch.zeros(n_pts)
-                for i_ray in range(n_pts):
-                    # extract z world height of raycast
-                    heights[i_ray] = rays_batch[i_ray][3][-1]
+            rays_batch = self.envs[i_env].p.rayTestBatch(
+                rayFromPositions = self.rayFromPositions,
+                rayToPositions = self.rayToPositions)
+            n_pts = self.terrain_grid_shape[1]*self.terrain_grid_shape[2]
+            heights = torch.zeros(n_pts)
+            for i_ray in range(n_pts):
+                # extract z world height of raycast
+                heights[i_ray] = rays_batch[i_ray][3][-1]
+            terrain_height = heights.reshape(self.terrain_grid_shape)
 
-                terrain_grid[i_env] =  heights.reshape(self.terrain_grid_shape)
-                # print('terrain ' + str(i_env) + ': ---')
-                # print(terrain_grid[i_env].numpy())
+            terrain_grid[i_env] =  terrain_height
+            # print('terrain ' + str(i_env) + ': ---')
+            # print(terrain_grid[i_env].numpy())
 
         self.terrain_grid = terrain_grid
 
@@ -144,14 +149,18 @@ class simulation_runner(object):
 
         if self.reward_function == 'Simulation':
 
+            # pick a random seed for which all the terrains will use,
+            # so that they all get the same new terrain
+            if self.show_GUI and self.record_video:
+                new_seed = 0
+                # make videos where all robots have the same terrain
+            else:
+                new_seed = np.random.randint(4294967295)
 
             for i_env in range(self.num_envs):
 
-                # make videos where all robots have the same terrain
-                if self.show_GUI and self.record_video:
-                    np.random.seed(0)
-                    torch.manual_seed(0)
-
+                np.random.seed(new_seed)
+                torch.manual_seed(new_seed)
 
                 self.envs[i_env].reset_terrain() # this seems to fix the memory leak
 
@@ -191,50 +200,48 @@ class simulation_runner(object):
         return is_valid
 
 
-    def load_robots(self,robot_names_list):
-        self.robot_names_list = robot_names_list
+    def load_robots(self,robot_name):
+        self.robot_name = robot_name
         # load in each robot to the environments
 
 
         # these are the parts we need to save for later
         self.modules_list = []
         self.is_valid = []
+        urdf_name = robot_name + robot_name[::-1] # for symmetric designs
+        is_valid = self.check_robot_validity(urdf_name)
+        self.is_valid = is_valid
 
-        for i_env in range(self.num_envs):
-            robot_name = robot_names_list[i_env]
+        if is_valid and self.reward_function == 'Simulation':
 
-            urdf_name = robot_name + robot_name[::-1] # for symmetric designs
-
-            is_valid = self.check_robot_validity(urdf_name)
-            self.is_valid.append(is_valid)
-
-            if is_valid and self.reward_function == 'Simulation':
-
+            for i_env in range(self.num_envs):
                 # env = self.envs[i_env]
                 # env.reset_robot(urdf_name=urdf_name, randomize_start=False)
                 # ### THIS IS CAUSING A MEMORY LEAK_-- WHY???
+                # Need to reset sim periodically... it does not destroy removed objects from memory
                 # attachments = env.attachments
                 # modules_types = env.modules_types
                 # n_modules = len(modules_types)
 
                 env = self.envs[i_env]
-                env.reset_robot(urdf_name=urdf_name, randomize_start=False)
-                attachments = env.attachments
-                modules_types = env.modules_types
-                n_modules = len(modules_types)
+                env.reset_robot(urdf_name=urdf_name, randomize_xyyaw=True)
+                # add a small amount of noise onto the robot start pose
 
+            modules_types = env.modules_types
+            n_modules = len(modules_types)
 
-                # create module containers for the nodes
-                modules = []
-                for i in range(n_modules):
-                    modules.append(pgnnc.Module(i, self.gnn_nodes[modules_types[i]],
-                                     device))
-                module_action_len = list(np.diff(env.action_indexes))
+            # create module containers for the nodes
+            modules = []
+            for i in range(n_modules):
+                modules.append(pgnnc.Module(i, self.gnn_nodes[modules_types[i]],
+                                 device))
 
-                self.modules_list.append(modules)
+            self.modules = modules
 
-            else:
-                self.modules_list.append(None)
+        else:
+            self.modules =None
+
+               
 
 
 
@@ -251,18 +258,17 @@ class simulation_runner(object):
 
 
         if self.reward_function == 'Simulation':
-            for i_env in range(self.num_envs):
 
 
-                if not(self.is_valid[i_env]):
-                    rewards[i_env] -= 10
-                else:
-                    rewards[i_env] += simulate_robot( 
-                            self.envs[i_env], 
-                            self.modules_list[i_env],
-                            self.record_video,
-                            self.max_xy,
-                            video_name_addition)
+            if not(self.is_valid):
+                rewards -= 10
+            else:
+                rewards += simulate_robot( 
+                        self.envs, 
+                        self.modules,
+                        self.record_video,
+                        self.max_xy,
+                        video_name_addition)
 
 
         elif self.reward_function == 'Recorded Simulation':
@@ -270,7 +276,7 @@ class simulation_runner(object):
                 if not(self.is_valid[i_env]):
                     rewards[i_env] -= 10
                 else:
-                    key = self.robot_names_list[i_env]
+                    key = self.robot_name
                     rewards[i_env] += self.saved_data[key]
                     # add artificial noise
                     rewards[i_env] += self.normal_distribution.sample()
@@ -286,64 +292,77 @@ class simulation_runner(object):
                     l_reward = 1
                     w_reward = 2
 
-                robot_name = self.robot_names_list[i_env]
+                robot_name = self.robot_name
                 for letter in robot_name:
                     if letter=='l':
                         rewards[i_env]+=l_reward
                     elif letter=='w':
                         rewards[i_env]+=w_reward
 
-
         return rewards
 
 
 
-def simulate_robot( env, modules, record_video, max_xy, video_name_addition):
+def simulate_robot( envs, modules, record_video, max_xy, video_name_addition):
+    # NOTE: assumes that all envs have the same robot loaded
+    num_envs = len(envs)
+
     n_time_steps=150
-    module_action_len= list(np.diff(env.action_indexes))
-    attachments = env.attachments
-    n_modules = len(env.modules_types)
-    pos_queue = deque(maxlen=20)
+    module_action_len= list(np.diff(envs[0].action_indexes))
+    attachments = envs[0].attachments
+    n_modules = len(envs[0].modules_types)
+    pos_queues = [deque(maxlen=20)]*num_envs
+    reward = torch.zeros(num_envs, dtype=torch.float32)
 
-    reward = 0
+    for env in envs:
+        # subtract out initial x, in case its not exactly zero
+        reward -= env.pos_xyz[0]
+        logID = None
+        if env.show_GUI and record_video:
+            vid_path = os.path.join(cwd, 
+                        env.loaded_urdf+ video_name_addition+'.mp4')
 
-    # subtract out initial x, in case its not exactly zero
-    reward -= env.pos_xyz[0]
-    logID = None
-    if env.show_GUI and record_video:
-        vid_path = os.path.join(cwd, 
-                    env.loaded_urdf+ video_name_addition+'.mp4')
-
-        if not os.path.exists(vid_path):
-            logID = env.p.startStateLogging(
-                env.p.STATE_LOGGING_VIDEO_MP4,
-                fileName=vid_path)
+            if not os.path.exists(vid_path):
+                logID = env.p.startStateLogging(
+                    env.p.STATE_LOGGING_VIDEO_MP4,
+                    fileName=vid_path)
             
-
+    robot_alive = [True]*num_envs
     for step in range(n_time_steps):
-        chassis_yaw = env.pos_rpy[-1]
-        chassis_x = env.pos_xyz[0]
-        chassis_y = env.pos_xyz[1]
-        
-        # set direction to head
-        desired_xyyaw = np.zeros(3)
-        desired_xyyaw[0] = 1.5
-        desired_xyyaw[1] = -1.5*chassis_y
-        desired_xyyaw[1] = np.clip(desired_xyyaw[1], -1.5,1.5)
-        # desired_xyyaw[2] = -2.5*chassis_yaw
-        # desired_xyyaw[2] = np.clip(desired_xyyaw[2], -1.5,1.5)
+
+        env_states = []
+        goals_world = []
+        for env in envs:
+            chassis_yaw = env.pos_rpy[-1]
+            chassis_x = env.pos_xyz[0]
+            chassis_y = env.pos_xyz[1]
+            
+            # set direction to head
+            desired_xyyaw = np.zeros(3)
+            desired_xyyaw[0] = 1.5
+            desired_xyyaw[1] = -1.5*chassis_y
+            desired_xyyaw[1] = np.clip(desired_xyyaw[1], -1.5,1.5)
+            # desired_xyyaw[2] = -2.5*chassis_yaw
+            # desired_xyyaw[2] = np.clip(desired_xyyaw[2], -1.5,1.5)
 
 
-        env_state = env.get_state()
-        states = [smm.to(device) for smm in to_tensors(env_state)]
+            env_state_i = env.get_state()
+            env_states.append(env_state_i)
 
-        goals_world = torch.tensor(desired_xyyaw, 
-                dtype=torch.float32, device=device).unsqueeze(0)
+            goals_world.append( torch.tensor(desired_xyyaw, 
+                    dtype=torch.float32, device=device))
+
+        # stack up and pass to gnn in batch
+        goals_world = torch.stack(goals_world)
+        states = [torch.tensor( np.stack(s),
+                         dtype=torch.float32, device=device)
+                         for s in list(zip(*env_states)) ]
+
         node_inputs = create_control_inputs(states, goals_world)
 
         for module in modules: # this prevents the LSTM in the GNN nodes from 
             # learning relations over time, only over internal prop steps.
-            module.reset_hidden_states(1) 
+            module.reset_hidden_states(num_envs) 
 
         with torch.no_grad():
             out_mean, out_var = pgnnc.run_propagations(
@@ -354,33 +373,43 @@ def simulate_robot( env, modules, record_video, max_xy, video_name_addition):
                 u_out_mean.append(out_mean[mm][:,:module_action_len[mm]])
                 tau_out_mean.append(out_mean[mm][:,module_action_len[mm]:])
             u_np = torch.cat(u_out_mean,-1).squeeze().numpy()
-        env.step(u_np)
         
-        # check if flipped
-        if np.dot([0,0,1], env.z_axis)<0:
-            break
+        for i_env in range(num_envs):
+            if robot_alive[i_env]:
+                pos_queue = pos_queues[i_env]
+                env = envs[i_env]
+                u = u_np[i_env, :]
+                env.step(u)
+            
+                # check if flipped
+                if np.dot([0,0,1], env.z_axis)<0:
+                    robot_alive[i_env] = False
 
-        # check if out of obstacle course
-        # if (np.abs(env.pos_xyz[0])>max_xy[0] or 
-        #     np.abs(env.pos_xyz[1])>max_xy[1]):
-        #     break
+                # check if out of obstacle course
+                # if (np.abs(env.pos_xyz[0])>max_xy[0] or 
+                #     np.abs(env.pos_xyz[1])>max_xy[1]):
+                #     break
 
-        if np.abs(env.pos_xyz[1])>max_xy[1]:
-            break
-
-
-        # check if stuck
-        pos_queue.append(np.array([env.pos_xyz[0], env.pos_xyz[1]]))
-        if len(pos_queue) == pos_queue.maxlen:
-            delta_pos = np.linalg.norm(pos_queue[-1] - pos_queue[0])
-            if delta_pos<0.02: # threshold for being considered stuck
-                break
-
-    reward += env.pos_xyz[0]
+                if np.abs(env.pos_xyz[1])>max_xy[1]:
+                    robot_alive[i_env] = False
 
 
-    if env.show_GUI and (logID is not None):
-        env.p.stopStateLogging(logID)
+                # check if stuck
+                pos_queue.append(
+                    np.array([env.pos_xyz[0], env.pos_xyz[1]]))
+                if len(pos_queue) == pos_queue.maxlen:
+                    delta_pos = np.linalg.norm(pos_queue[-1] - pos_queue[0])
+                    if delta_pos<0.02: # threshold for being considered stuck
+                        robot_alive[i_env] = False
+
+
+    for i_env in range(num_envs):
+        env = envs[i_env]
+        reward[i_env] += env.pos_xyz[0]
+
+
+        if env.show_GUI and (logID is not None):
+            env.p.stopStateLogging(logID)
 
     return reward
 
