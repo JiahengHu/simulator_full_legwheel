@@ -23,12 +23,15 @@ device = torch.device("cpu")
 
 np.set_printoptions(precision=2,suppress=True)
 
+terrain_grid_shape = [1,50,20]
+
 class simulation_runner(object):
 
     def __init__(self, num_envs = 1, show_GUI=False):
         self.num_envs = num_envs
         # self.terrain_grid_shape = [1,20,10] # deltax, deltay
-        self.terrain_grid_shape = [1,50,20] # deltax, deltay
+        # self.terrain_grid_shape = [1,50,20] # deltax, deltay
+        self.terrain_grid_shape = terrain_grid_shape # deltax, deltay
         self.robot_name = [] # all envs have the same robot loaded
         self.terrain_grid = []
         self.max_xy = [9,2] # defines size of obstacle course. TODO: get from terrain randomizer.
@@ -44,7 +47,7 @@ class simulation_runner(object):
         self.show_GUI = show_GUI # if true, will show first gui. for test only.
         # self.show_GUI = True # if true, will show first gui. for test only.
         self.record_video= False # if show gui and true, records some videos
-        self.record_video= True # if show gui and true, records some videos
+        # self.record_video= True # if show gui and true, records some videos
         # obstacle density and size
         # high and large and dense
         self.MIN_BLOCK_DISTANCE_LOW = 0.4
@@ -53,7 +56,7 @@ class simulation_runner(object):
         self.MIN_BLOCK_DISTANCE_HIGH = 1.
         self.MAX_BLOCK_HEIGHT_LOW = 0
         self.terrain_scaling = 1. # 0: no bumps. 1: max bumps
-
+        self.terrain_seed = None
         # points for grid height with ray casting
         # self.terrain_grid_shape = [1,20,10]
         grid_x, grid_y = np.meshgrid(
@@ -72,6 +75,7 @@ class simulation_runner(object):
 
             PATH = 'mbrl_v4_test17/multidesign_control_iter3.pt'
             PATH = 'mbrl_v4_test18/multidesign_control_iter3_v4.pt'
+            PATH = 'mbrl_v4_test19/multidesign_control_iter3_v2.pt'
             PATH = os.path.join(cwd, PATH)
             save_dict = torch.load( PATH, map_location=lambda storage, loc: storage)
             goal_len =3
@@ -120,22 +124,25 @@ class simulation_runner(object):
 
             # NOTE: Assumes that the terrains in the envs are all the same.
             
-            i_env = 0
+            # i_env = 0
+
             # for i_env in range(self.num_envs):
+            for i_env in range(1): # since the envs are all the same,
+            # only need to measure them once
 
-            rays_batch = self.envs[i_env].p.rayTestBatch(
-                rayFromPositions = self.rayFromPositions,
-                rayToPositions = self.rayToPositions)
-            n_pts = self.terrain_grid_shape[1]*self.terrain_grid_shape[2]
-            heights = torch.zeros(n_pts)
-            for i_ray in range(n_pts):
-                # extract z world height of raycast
-                heights[i_ray] = rays_batch[i_ray][3][-1]
-            terrain_height = heights.reshape(self.terrain_grid_shape)
+                rays_batch = self.envs[i_env].p.rayTestBatch(
+                    rayFromPositions = self.rayFromPositions,
+                    rayToPositions = self.rayToPositions)
+                n_pts = self.terrain_grid_shape[1]*self.terrain_grid_shape[2]
+                heights = torch.zeros(n_pts)
+                for i_ray in range(n_pts):
+                    # extract z world height of raycast
+                    heights[i_ray] = rays_batch[i_ray][3][-1]
+                terrain_height = heights.reshape(self.terrain_grid_shape)
 
-            terrain_grid[i_env] =  terrain_height
-            # print('terrain ' + str(i_env) + ': ---')
-            # print(terrain_grid[i_env].numpy())
+                terrain_grid[0] =  terrain_height
+                # print('terrain : ---')
+                # print(terrain_height[0].max(dim=1)[0])
 
         self.terrain_grid = terrain_grid
 
@@ -153,32 +160,34 @@ class simulation_runner(object):
             # so that they all get the same new terrain
             if self.show_GUI and self.record_video:
                 new_seed = 0
-                # make videos where all robots have the same terrain
-            else:
-                new_seed = np.random.randint(4294967295)
-
-            for i_env in range(self.num_envs):
-
                 np.random.seed(new_seed)
                 torch.manual_seed(new_seed)
+                # make videos where all robots have the same terrain
+            # else:
+            #     new_seed = np.random.randint(4294967295)
 
+
+            if terrain_block_height is None:
+                terrain_block_height   = np.random.uniform(self.MAX_BLOCK_HEIGHT_LOW,
+                         self.MAX_BLOCK_HEIGHT_LOW + (self.MAX_BLOCK_HEIGHT_HIGH - self.MAX_BLOCK_HEIGHT_LOW) * self.terrain_scaling)
+            if terrain_block_distance is None:
+                terrain_block_distance = np.random.uniform(
+                     self.MIN_BLOCK_DISTANCE_HIGH + (self.MIN_BLOCK_DISTANCE_LOW - self.MIN_BLOCK_DISTANCE_HIGH) * self.terrain_scaling,
+                     self.MIN_BLOCK_DISTANCE_HIGH
+                     )
+
+            for i_env in range(self.num_envs):
                 self.envs[i_env].reset_terrain() # this seems to fix the memory leak
 
-                # randomizes terrain with poisson sampling blocks
-                self.terrain_randomizer.reset()
+            # randomizes terrain with poisson sampling blocks
+            self.terrain_randomizer.reset()
 
-                if terrain_block_height is None:
-                    terrain_block_height   = np.random.uniform(self.MAX_BLOCK_HEIGHT_LOW,
-                             self.MAX_BLOCK_HEIGHT_LOW + (self.MAX_BLOCK_HEIGHT_HIGH - self.MAX_BLOCK_HEIGHT_LOW) * self.terrain_scaling)
-                if terrain_block_distance is None:
-                    terrain_block_distance = np.random.uniform(
-                         self.MIN_BLOCK_DISTANCE_HIGH + (self.MIN_BLOCK_DISTANCE_LOW - self.MIN_BLOCK_DISTANCE_HIGH) * self.terrain_scaling,
-                         self.MIN_BLOCK_DISTANCE_HIGH
-                         )
-                self.terrain_block_distance = terrain_block_distance
-                self.terrain_block_height = terrain_block_height
-                self.terrain_randomizer.randomize_env(self.envs[i_env].p,
-                    terrain_block_distance, terrain_block_height)
+            self.terrain_block_distance = terrain_block_distance
+            self.terrain_block_height = terrain_block_height
+            # all terrains will get the same block added
+            self.terrain_randomizer.randomize_env(
+                [self.envs[i_env].p for i_env in range(self.num_envs)],
+                terrain_block_distance, terrain_block_height)
 
 
         # measure their heights

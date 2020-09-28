@@ -50,14 +50,14 @@ N_ACTIONS = num_module_types
 MAX_N_MODULES = 3
 NUM_ENVS = 3 # number of environments to run in parallel
 SIM_TIME_STEPS = 100
-NUM_EPISODES = 10000
+NUM_EPISODES = 20000
 TARGET_UPDATE = 50 # how many episodes to delay target net from policy net
 BATCH_SIZE = 200 # number of samples in a batch for dqn learning
-# BATCH_SIZE = 10 # number of samples in a batch for dqn learning
+BATCH_SIZE = 5 # number of samples in a batch for dqn learning
 N_TRAIN_ITERS = 10 # number of training steps after each sim batch
 BOLTZMANN_TEMP_START = 10 
-BOLTZMANN_TEMP_MIN = 0.5
-BOLTZMANN_TEMP_DECAY_CONST = 1./2000 # T = T0*exp(-c*episode) e.g. 10*np.exp(-np.array([0, 1000, 5000])/1000)
+BOLTZMANN_TEMP_MIN = 1
+BOLTZMANN_TEMP_DECAY_CONST = 1./4000 # T = T0*exp(-c*episode) e.g. 10*np.exp(-np.array([0, 1000, 5000])/1000)
 # RELOAD_WEIGHTS=True # if true, looks for policy_net_weights.pt to load in
 RELOAD_WEIGHTS=False # if true, looks for policy_net_weights.pt to load in
 
@@ -236,7 +236,7 @@ def run_episode(is_training_episode, terrains,
             for i_env in range(1):
                 action = actions[i_env].unsqueeze(0).clone()
                 # reward = reward.unsqueeze(0).clone()
-                reward = reward.clone()
+                reward = reward.squeeze().clone()
                 replay_memory.push(designs[i_env].clone(), terrains[i_env].clone(),
                     action, next_designs[i_env].clone(), reward, non_final.clone())
                 #('state', 'terrain', 'action', 'next_state', 'reward', 'done'))
@@ -279,25 +279,34 @@ for i_episode in range(NUM_EPISODES):
     temp = boltzmann_temp(i_episode)  # anneals temp
     run_episode(True,terrain,sim_runner,
           current_boltzmann_temp =  temp)
-       
+    
+    for i_train in range(N_TRAIN_ITERS):    
 
-    ### run dqn training cycles
-    # for training cycles:
-        # sample from buffer
-    if len(replay_memory) >= BATCH_SIZE:
-        for i_train in range(N_TRAIN_ITERS):    
-            batch = replay_memory.sample(BATCH_SIZE)
+        ### run dqn training cycles
+        # for training cycles:
+            # sample from buffer
+        if len(replay_memory) >= BATCH_SIZE:
 
-            # Compute a mask of non-final states and concatenate the batch elements
-            # (a final state would've been the one after which simulation ended)
-            non_final_mask = torch.stack(batch.non_final)
-            # indexing with dtype torch.uint8 is deprecated, cast to dtype torch.bool
+            # batch = replay_memory.sample(BATCH_SIZE)
 
-            state_batch = torch.stack(batch.state).to(device)
-            next_state_batch = torch.stack(batch.next_state).to(device)
-            terrain_batch = torch.stack(batch.terrain).to(device)
-            action_batch = torch.stack(batch.action).to(device)
-            reward_batch = torch.cat(batch.reward).to(device)
+            # # Compute a mask of non-final states and concatenate the batch elements
+            # # (a final state would've been the one after which simulation ended)
+            # non_final_mask = torch.stack(batch.non_final)
+            # # indexing with dtype torch.uint8 is deprecated, cast to dtype torch.bool
+
+            # state_batch = torch.stack(batch.state).to(device)
+            # next_state_batch = torch.stack(batch.next_state).to(device)
+            # terrain_batch = torch.stack(batch.terrain).to(device)
+            # action_batch = torch.stack(batch.action).to(device)
+            # reward_batch = torch.cat(batch.reward).to(device)
+
+            state_batch, terrain_batch, action_batch, next_state_batch, reward_batch, non_final_batch = replay_memory.sample(BATCH_SIZE)
+            state_batch = state_batch.to(device)
+            terrain_batch =terrain_batch.to(device)
+            action_batch = action_batch.to(device)
+            next_state_batch =next_state_batch.to(device)
+            reward_batch =reward_batch.to(device)
+            non_final_mask =non_final_batch
             non_final_next_states = next_state_batch[non_final_mask]
             non_final_terrains = terrain_batch[non_final_mask]
 
@@ -365,6 +374,13 @@ for i_episode in range(NUM_EPISODES):
     if (i_episode) % TARGET_UPDATE == 0 and i_episode>0:
         target_net.load_state_dict(policy_net.state_dict())
 
+    if (i_episode % 5000)==0 and i_episode>5000:
+        N_TRAIN_ITERS += 2
+        for param_group in optimizer.param_groups:
+            # half the learning rate periodically
+            param_group['lr'] = param_group['lr']/2.
+            print( 'LR: ' + str(param_group['lr']) )
+
 
     # if (i_episode % 20 == 0):
     if (i_episode % 100 == 0 and i_episode>0):
@@ -404,6 +420,7 @@ for i_episode in range(NUM_EPISODES):
         save_dict['n_fc_layers']=policy_net.n_fc_layers
         save_dict['env_vect_size']=policy_net.env_vect_size
         save_dict['hidden_layer_size']=policy_net.hidden_layer_size
+        save_dict['i_episode'] = i_episode
 
         torch.save(save_dict, PATH)
         # PATH2 = os.path.join(cwd, 'rewards_from_simulation.pt')

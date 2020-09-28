@@ -218,7 +218,7 @@ class TerrainRandomizer():
     #     block_ID = self.block_IDs.pop()
     #     pybullet_client.removeBody(block_ID)
 
-  def randomize_env(self, pybullet_client, _MIN_BLOCK_DISTANCE, _MAX_BLOCK_HEIGHT):
+  def randomize_env(self, pybullet_clients, _MIN_BLOCK_DISTANCE, _MAX_BLOCK_HEIGHT):
     """Generate a random terrain for the current env.
 
     """
@@ -226,9 +226,10 @@ class TerrainRandomizer():
 
     self._MIN_BLOCK_DISTANCE = _MIN_BLOCK_DISTANCE
     self._MAX_BLOCK_HEIGHT = _MAX_BLOCK_HEIGHT
-    self.block_IDs = self._generate_convex_blocks(pybullet_client)
+    self.block_IDs, self.block_centers, self.half_length1_list,\
+      self.half_length2_list,self.half_height_list = self._generate_convex_blocks(pybullet_clients)
 
-  def _generate_convex_blocks(self,pybullet_client):
+  def _generate_convex_blocks(self,pybullet_clients):
     """Adds random convex blocks to the flat ground.
 
     We use the Possion disk algorithm to add some random blocks on the ground.
@@ -238,11 +239,17 @@ class TerrainRandomizer():
 
     """
 
+    block_IDs = [list() for i in range(len(pybullet_clients))]
+
     poisson_disc = PoissonDisc2D(_GRID_LENGTH, _GRID_WIDTH, self._MIN_BLOCK_DISTANCE,
                                  _MAX_SAMPLE_SIZE)
 
-    block_centers = poisson_disc.generate()
-    block_IDs = []
+    block_centers_out = poisson_disc.generate()
+    half_length1_list = list()
+    half_length2_list = list()
+    half_height_list = list()
+    block_centers = list()
+
     for center in block_centers:
       # We want the blocks to be in front of the robot.
       shifted_center = np.array(center) - [1, _GRID_WIDTH / 2]
@@ -251,27 +258,75 @@ class TerrainRandomizer():
       # if abs(shifted_center[0]) < 0.5 and abs(shifted_center[1]) < 0.5:
       if np.linalg.norm(shifted_center[0:1]) < 0.5:
         continue
+      else:
+        block_centers.append(center)
 
       half_length1 = np.random.uniform(_MIN_BLOCK_LENGTH, _MAX_BLOCK_LENGTH) / (
           2 * math.sqrt(2))
       half_length2 = np.random.uniform(_MIN_BLOCK_LENGTH, _MAX_BLOCK_LENGTH) / (
           2 * math.sqrt(2))
       half_height = np.random.uniform(_MIN_BLOCK_HEIGHT, self._MAX_BLOCK_HEIGHT) / 2
-      box_id = pybullet_client.createCollisionShape(
-          pybullet_client.GEOM_BOX,
-          halfExtents=[half_length1, half_length2, half_height])
-      block_color = 1 - np.interp(2*half_height,
-             [ _MIN_BLOCK_HEIGHT, self._MAX_BLOCK_HEIGHT_FOR_COLOR], [0,1]) # scales 0-1 for block color
-      visual_id = pybullet_client.createVisualShape(
-          pybullet_client.GEOM_BOX,
-          rgbaColor = [block_color, block_color, block_color, 1],
-          halfExtents=[half_length1, half_length2, half_height])
-      block_ID = pybullet_client.createMultiBody(
-          baseMass=0,
-          baseCollisionShapeIndex=box_id,
-          baseVisualShapeIndex = visual_id,
-          basePosition=[shifted_center[0], shifted_center[1], half_height])
-      block_IDs.append(block_ID) 
-    return block_IDs
+      
+      half_length1_list.append(half_length1)
+      half_length2_list.append(half_length2)
+      half_height_list.append(half_height)
+
+      # add the block to all the envs
+      for i_env in range(len(pybullet_clients)):
+        pybullet_client = pybullet_clients[i_env]
+
+        box_id = pybullet_client.createCollisionShape(
+            pybullet_client.GEOM_BOX,
+            halfExtents=[half_length1, half_length2, half_height])
+        block_color = 1 - np.interp(2*half_height,
+               [ _MIN_BLOCK_HEIGHT, self._MAX_BLOCK_HEIGHT_FOR_COLOR], [0,1]) # scales 0-1 for block color
+        visual_id = pybullet_client.createVisualShape(
+            pybullet_client.GEOM_BOX,
+            rgbaColor = [block_color, block_color, block_color, 1],
+            halfExtents=[half_length1, half_length2, half_height])
+        block_ID = pybullet_client.createMultiBody(
+            baseMass=0,
+            baseCollisionShapeIndex=box_id,
+            baseVisualShapeIndex = visual_id,
+            basePosition=[shifted_center[0], shifted_center[1], half_height])
+        block_IDs[i_env].append(block_ID) 
+    return block_IDs, block_centers, half_length1_list,half_length2_list,half_height_list
 
               # rgbaColor = [0.7*block_color, 0.7*block_color, 1.0*block_color, 1],
+
+  def alter_block_heights(self,pybullet_clients, delta_height):
+    for i_env in range(len(pybullet_clients)):
+        block_IDs_i = self.block_IDs[i_env]
+        pybullet_client = pybullet_clients[i_env]
+        for block_ID in block_IDs_i:
+          pybullet_client.removeBody(block_ID)
+    block_IDs = [list() for i in range(len(pybullet_clients))]
+
+    for ib in range(len(self.block_centers)):
+      center = self.block_centers[ib]
+      half_length1 = self.half_length1_list[ib]
+      half_length2 = self.half_length2_list[ib]
+      self.half_height_list[ib] = min(0, self.half_height_list[ib] + delta_height)
+      half_height = self.half_height_list[ib]
+
+      # add the block to all the envs
+      for i_env in range(len(pybullet_clients)):
+        pybullet_client = pybullet_clients[i_env]
+
+        box_id = pybullet_client.createCollisionShape(
+            pybullet_client.GEOM_BOX,
+            halfExtents=[half_length1, half_length2, half_height])
+        block_color = 1 - np.interp(2*half_height,
+               [ _MIN_BLOCK_HEIGHT, self._MAX_BLOCK_HEIGHT_FOR_COLOR], [0,1]) # scales 0-1 for block color
+        visual_id = pybullet_client.createVisualShape(
+            pybullet_client.GEOM_BOX,
+            rgbaColor = [block_color, block_color, block_color, 1],
+            halfExtents=[half_length1, half_length2, half_height])
+        block_ID = pybullet_client.createMultiBody(
+            baseMass=0,
+            baseCollisionShapeIndex=box_id,
+            baseVisualShapeIndex = visual_id,
+            basePosition=[shifted_center[0], shifted_center[1], half_height])
+        block_IDs[i_env].append(block_ID) 
+    self.block_IDs = block_IDs
+    

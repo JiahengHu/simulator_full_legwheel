@@ -1,0 +1,32 @@
+pybullet build time: Sep 22 2020 00:55:20
+Reloaded weights from /home/cobracommander/mobile_design_RL/09262020/policy_net_params.pt
+terrain max: 0.009986240416765213
+running DQN
+ Robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Output count dist:[0.  0.  0.5 0.  0.  0.1 0.  0.3 0.  0.  0.  0. ]
+Output probs :    [0.  0.  0.5 0.  0.  0.1 0.  0.3 0.  0.  0.  0. ]
+Output values :    [N/A 8.5 10.8 7.1 4.8 9.1 6.3 10.3 N/A 8.2 7.1 5.4 ]
+running Simulations
+Sim rewards:[ 5.1  6.7 11.1  7.   1.7 10.7  6.9 11.   4.5  7.2  8.4  3.1]
+Sim reward dist: [0.1 0.1 0.1 0.1 0.  0.1 0.1 0.1 0.1 0.1 0.1 0. ]
+-----------
+terrain max: 0.04762418195605278
+running DQN
+ Robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Output count dist:[0.  0.  0.8 0.  0.  0.  0.  0.1 0.  0.  0.  0. ]
+Output probs :    [0.  0.  0.8 0.  0.  0.  0.  0.1 0.  0.  0.  0. ]
+Output values :    [3.9 5.2 9.7 5.5 2.9 3.9 4.3 7.6 3.6 5.7 6.2 4.5 ]
+running Simulations
+Sim rewards:[5.1 5.4 8.  4.3 0.9 1.5 4.2 2.1 3.4 5.4 3.8 4. ]
+Sim reward dist: [0.1 0.1 0.2 0.1 0.  0.  0.1 0.  0.1 0.1 0.1 0.1]
+-----------
+terrain max: 0.09908542782068253
+running DQN
+ Robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Output count dist:[0.1 0.  0.5 0.1 0.  0.  0.  0.1 0.  0.1 0.1 0. ]
+Output probs :    [0.  0.  0.5 0.1 0.  0.  0.  0.1 0.  0.1 0.  0. ]
+Output values :    [3.7 3.4 5.1 3.3 1.9 3. 1.7 3.2 2.7 4. 3.2 2.8 ]
+running Simulations
+Sim rewards:[4.7 2.2 3.8 4.  0.7 2.2 2.5 2.6 3.1 4.3 3.2 2.4]
+Sim reward dist: [0.1 0.1 0.1 0.1 0.  0.1 0.1 0.1 0.1 0.1 0.1 0.1]
+-----------

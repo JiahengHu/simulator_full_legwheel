@@ -53,8 +53,7 @@ terrain_grid_shape = sim_runner.terrain_grid_shape
 ### Initialize DQN and replay buffer
 
 
-folder = '09242020/'
-folder = '09252020/'
+folder = '09262020/'
 # initiate the policy network and target network. 
 
 PATH = os.path.join(cwd, folder+'policy_net_params.pt')
@@ -151,6 +150,8 @@ def run_episode(terrains, use_max = True):
                 # print(mv)
                 robot_name = module_vector_list_to_robot_name(mv)
                 robot_names_list.append(robot_name)
+            
+            state_action_value = torch.gather(state_action_values, 1, actions.unsqueeze(-1)).squeeze()
 
         else:
             non_final = torch.tensor(1, dtype=torch.bool)
@@ -173,7 +174,7 @@ def run_episode(terrains, use_max = True):
     # print('names list:     ' + str(robot_names_list))
     # print('selection probs:'+ str(prob.numpy()))
 
-    return robot_names_list, prob
+    return robot_names_list, prob, state_action_value
 
 terrain_block_heights = np.linspace(
         sim_runner.MAX_BLOCK_HEIGHT_LOW+0.01,
@@ -182,19 +183,22 @@ for it in range(len(terrain_block_heights)):
     terrain_block_height = terrain_block_heights[it] 
     terrain = sim_runner.randomize_terrains(
         terrain_block_height=terrain_block_height)
+    # print('Terrain seed: ' + str(sim_runner.terrain_seed))
+    # print('Terrain grid: ')
+    # print(sim_runner.terrain_grid)
 
     terrain_max = torch.max(terrain).numpy().item()
     # print('terrain means: ' + str(terrain_means))
     print('terrain max: ' + str(terrain_max))
 
 
-    n_samples = 100
+    n_samples = 1000
     terrains_rep = terrain.expand(n_samples,-1, -1, -1)
     # print(terrains.shape)
     # print(terrains_rep.shape)
 
-
-    robot_names_out, prob = run_episode(terrains_rep,
+    print('running DQN')
+    robot_names_out, prob, state_action_value = run_episode(terrains_rep,
              use_max=False) # for validation, don't simulate or store anything,
     # run with a range of terrains to check output
 
@@ -207,6 +211,48 @@ for it in range(len(terrain_block_heights)):
     name_count = []
     name_indices = []
     name_probs = []
+    name_values = []
+
+    test_robot_str = ''
+    for rn in test_robot_list:
+        test_robot_str += rn
+        test_robot_str += ' '
+    print(' Robots: ' + str(test_robot_str))
+
+    for test_robot_name in test_robot_list:
+
+        indices = [i for i, x in enumerate(robot_names_out) 
+                    if x == test_robot_name]
+        # name_count.append(robot_names_out.count(test_robot_name))
+        name_indices.append(indices)
+        if len(indices)>0:
+            name_probs.append(prob[indices[0]].numpy())
+            name_values.append(state_action_value[indices[0]].numpy().item())
+        else:
+            name_probs.append(0)
+            name_values.append(None)
+        name_count.append(len(indices))
+
+    name_count = np.array(name_count)
+    name_probs = np.array(name_probs)
+    # print(name_indices)
+    print('Output count dist:' + np.array2string(
+                            name_count/np.sum(name_count),
+                            precision=2))
+    print('Output probs :    ' + np.array2string(
+                            name_probs,precision=2))
+    name_values_str = '['
+    for v in name_values:
+        if v is not None:
+            name_values_str += np.array2string(np.array(v),
+                precision=2)
+        else:
+            name_values_str += 'N/A'
+        name_values_str += ' '
+    name_values_str += ']'
+    print('Output values :    ' + str(name_values_str))
+
+    print('running Simulations')
     for test_robot_name in test_robot_list:
 
         # terrains = sim_runner.randomize_terrains(
@@ -215,26 +261,16 @@ for it in range(len(terrain_block_heights)):
         sim_runner.load_robots(test_robot_name)
         r = sim_runner.run_sims(video_name_addition = str(it))
         # r = torch.tensor([1])
-        test_robot_rewards.append(r.mean()) # mean of multiple runs
+        test_robot_rewards.append(r.mean().numpy().item()) # mean of multiple runs
 
-        indices = [i for i, x in enumerate(robot_names_out) if x == test_robot_name]
-        # name_count.append(robot_names_out.count(test_robot_name))
-        name_indices.append(indices)
-        if len(indices)>0:
-            name_probs.append(prob[indices[0]].numpy())
-        else:
-            name_probs.append(0)
-        name_count.append(len(indices))
 
-    name_count = np.array(name_count)
-    name_probs = np.array(name_probs)
-    # print(name_indices)
-    test_robot_rewards = torch.cat(test_robot_rewards).numpy()
-    print('Test robots:' + str(test_robot_list))
-    print('Test rewards:' + str(test_robot_rewards))
-    print('Test reward dist: ' + str(test_robot_rewards/test_robot_rewards.sum()))
-    print('Output count dist:' + str(name_count/name_count.sum()))
-    print('Output probs :    ' + str(name_probs))
+    test_robot_rewards = np.array(test_robot_rewards)
+    print('Sim rewards:' + np.array2string(
+                            test_robot_rewards,precision=2))
+    print('Sim reward dist: ' + np.array2string(
+                            test_robot_rewards/np.sum(test_robot_rewards),
+                            precision=2))
+
     print('-----------')
 
 

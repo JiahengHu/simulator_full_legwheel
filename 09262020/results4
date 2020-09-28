@@ -1,0 +1,33 @@
+Terrain seed: 313383579
+terrain max: 0.009567690081894398
+running DQN
+ Robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Output count dist:[0.   0.   0.33 0.   0.   0.27 0.   0.38 0.   0.01 0.01 0.01]
+Output probs :    [0.   0.   0.34 0.   0.   0.27 0.   0.36 0.   0.01 0.01 0.  ]
+Output values :    [N/A N/A 10.91 7.84 6.07 10.44 7.16 10.97 N/A 9.44 7.78 6.32 ]
+running Simulations
+Sim rewards:[ 5.06  4.95 10.92  6.91  5.43  8.31  8.16 10.23  4.35  3.98  9.32  6.87]
+Sim reward dist: [0.06 0.06 0.13 0.08 0.06 0.1  0.1  0.12 0.05 0.05 0.11 0.08]
+-----------
+Terrain seed: 3665854676
+terrain max: 0.05424879491329193
+running DQN
+ Robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Output count dist:[0.23 0.05 0.11 0.24 0.01 0.02 0.04 0.04 0.05 0.08 0.08 0.04]
+Output probs :    [0.21 0.07 0.12 0.23 0.01 0.02 0.04 0.04 0.05 0.09 0.08 0.04]
+Output values :    [4.05 2.89 3.83 3.77 1.48 1.84 1.96 2.78 2.81 3.38 3.3 2.66 ]
+running Simulations
+Sim rewards:[4.88 2.78 7.27 3.45 1.09 3.   1.96 4.95 2.53 3.97 1.75 2.79]
+Sim reward dist: [0.12 0.07 0.18 0.09 0.03 0.07 0.05 0.12 0.06 0.1  0.04 0.07]
+-----------
+Terrain seed: 2956731148
+terrain max: 0.0990869551897049
+running DQN
+ Robots:['lll', 'llw', 'lwl', 'wll', 'www', 'wwl', 'wlw', 'lww', 'lnl', 'lnw', 'wnl', 'wnw']
+Output count dist:[0.25 0.07 0.08 0.23 0.02 0.02 0.05 0.04 0.05 0.07 0.07 0.06]
+Output probs :    [0.25 0.06 0.08 0.25 0.02 0.02 0.04 0.04 0.05 0.07 0.06 0.05]
+Output values :    [3.77 2.34 2.92 3.37 1.07 1.2 1.67 2.24 2.54 2.79 2.45 2.13 ]
+running Simulations
+Sim rewards:[2.44 1.65 0.73 1.37 0.45 0.49 0.64 0.58 1.87 0.86 2.15 0.69]
+Sim reward dist: [0.18 0.12 0.05 0.1  0.03 0.04 0.05 0.04 0.13 0.06 0.15 0.05]
+-----------
