@@ -40,17 +40,22 @@ cwd = os.path.dirname(os.path.realpath(__file__))
 
 
 ### hyperparameters
+cpu_count = torch.multiprocessing.cpu_count()
+if cpu_count > 6:
+    NUM_SIM_WORKERS = 6
+else:
+    NUM_SIM_WORKERS = 1
+
 RECORD_REWARDS = False # flag to keep some statistics on the rewards obtained by simulation
-REPLAY_MEMORY_SIZE = 7500
-LR_INIT = 5e-4
+REPLAY_MEMORY_SIZE = 5000
+LR_INIT = 1e-4
 N_ACTIONS = num_module_types
 MAX_N_MODULES = 3
 NUM_ENVS = 3 # number of environments to run in parallel
 SIM_TIME_STEPS = 100
 NUM_EPISODES = 20000
 TARGET_UPDATE = 100 # how many episodes to delay target net from policy net
-BATCH_SIZE = 250 # number of samples in a batch for dqn learning
-# BATCH_SIZE = 10 # number of samples in a batch for dqn learning
+BATCH_SIZE = 100 # number of samples in a batch for dqn learning
 BOLTZMANN_TEMP_START = 10 
 BOLTZMANN_TEMP_MIN = 1
 BOLTZMANN_TEMP_DECAY_CONST = 1./4000 # T = T0*exp(-c*episode) e.g. 10*np.exp(-np.array([0, 1000, 5000])/1000)
@@ -60,6 +65,9 @@ SAVE_EP = 100 # how many episodes to wait between saving
 VALIDATION_EP = 100 # how many episdoes to wait between validations
 
 
+# For testing only
+# BATCH_SIZE = 10 # number of samples in a batch for dqn learning
+# VALIDATION_EP = 10 # how many episdoes to wait between validations
 
 
 
@@ -160,10 +168,15 @@ def pusher_worker(policy_net,
                     rewards = sim_runner.run_sims()
                     reward += rewards.mean()
                     if sim_runner.is_valid:
-                        print(print_str + ' Ran simulations of ' + str(robot_name) +
+                        # print(terrains)
+                        terrain_max = terrains.max().numpy()
+                        print(print_str + ' simulated ' + str(robot_name) +
                             ' rewards ' +
-                                np.array2string(
-                                rewards.numpy(),precision=1))
+                                np.array2string(rewards.numpy(),precision=1) 
+                                + ' Terrain max ' + np.array2string(terrain_max,precision=3) 
+)
+                else:
+                    print(robot_name)
 
             else:
                 non_final = torch.tensor(1, dtype=torch.bool)
@@ -190,9 +203,14 @@ def pusher_worker(policy_net,
             designs = next_designs
 
 
+
+
     print('started pusher_worker ' + str(worker_num))
 
     sim_runner = simulation_runner(NUM_ENVS)
+    # sim_runner = simulation_runner(NUM_ENVS, show_GUI= True)
+# 
+
     terrain_grid_shape = sim_runner.terrain_grid_shape
     while current_episode.value<max_episode:
         with current_episode.get_lock():
@@ -204,7 +222,7 @@ def pusher_worker(policy_net,
         terrain = sim_runner.randomize_terrains()
         current_boltzmann_temp = boltzmann_temp(i_episode)  # anneals temp
         print_str_now = 'worker:' + str(worker_num) + ', ep:' + str(i_episode)
-        run_episode(policy_net,replay_memory,True,terrain,sim_runner,
+        run_episode(policy_net,replay_memory,True,terrain, sim_runner,
               current_boltzmann_temp =  current_boltzmann_temp,
               print_str = print_str_now )
 
@@ -245,10 +263,18 @@ def pusher_worker(policy_net,
 def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode):
     print('started sampler_worker')
 
-    policy_net_copy = policy_net.to(device)
+    # policy_net_copy = policy_net.to(device)
 
-    optimizer = torch.optim.Adam(policy_net_copy.parameters(),
-                   lr=LR_INIT, weight_decay= 1e-4)
+
+    policy_net_copy = dqn( 
+        terrain_in_shape = policy_net.terrain_in_shape ,
+        n_module_types= policy_net.n_module_types,
+        max_num_modules=policy_net.max_num_modules,
+        kernel_size=policy_net.kernel_size,
+        n_channels= policy_net.n_channels,
+        n_fc_layers=policy_net.n_fc_layers,
+        env_vect_size=policy_net.env_vect_size,
+        hidden_layer_size=policy_net.hidden_layer_size).to(device)
 
     target_net = dqn( 
         terrain_in_shape = policy_net.terrain_in_shape ,
@@ -260,11 +286,19 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
         env_vect_size=policy_net.env_vect_size,
         hidden_layer_size=policy_net.hidden_layer_size).to(device)
 
+
+    optimizer = torch.optim.Adam(policy_net_copy.parameters(),
+                   lr=LR_INIT, weight_decay= 1e-4)
+
+
+    policy_net_copy.load_state_dict(policy_net.state_dict())
     target_net.load_state_dict(policy_net_copy.state_dict())
     target_net.eval()
     opt_ep = 0
-    while  current_episode.value<max_episode:
+    while current_episode.value < max_episode:
+
         i_episode = current_episode.value
+
         if len(replay_memory) >= BATCH_SIZE:
 
             # # Compute a mask of non-final states and concatenate the batch elements
@@ -319,44 +353,47 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
 
             opt_ep += 1
 
-            time.sleep(0.01) # keep loop from being too fast
 
-        if (opt_ep) % 10==0 and opt_ep>0:
-            # make sure the cpu copy has the most recent weights
-            policy_net.load_state_dict(policy_net_copy.state_dict())
+            if (opt_ep) % 10==0 and opt_ep>0:
+                # make sure the cpu copy has the most recent weights
+                policy_net.load_state_dict(policy_net_copy.state_dict())
 
-        if (opt_ep) % 10==0 and opt_ep>0:
-            print('Loss at opt_ep. ' + str(opt_ep) + ': ' + str(loss.detach().cpu().numpy()))
-
-
-        # Update the target network, copying all weights and biases in DQN
-        if (opt_ep) % TARGET_UPDATE == 0 and opt_ep>0:
-            target_net.load_state_dict(policy_net_copy.state_dict())
-
-        if (opt_ep % 5000)==0 and opt_ep>5000:
-            for param_group in optimizer.param_groups:
-                # half the learning rate periodically
-                param_group['lr'] = param_group['lr']/2.
-                print( 'LR: ' + str(param_group['lr']) )
+            if (opt_ep) % 50==0 and opt_ep>0:
+                print('Loss at opt_ep. ' + str(opt_ep) + ': ' + str(loss.detach().cpu().numpy()))
 
 
-        if (opt_ep % SAVE_EP == 0):
-            PATH = os.path.join(cwd, 'policy_net_params.pt')
-            save_dict = dict()
-            save_dict['policy_net_state_dict'] = policy_net.state_dict()
-            save_dict['terrain_in_shape'] = policy_net.terrain_in_shape
-            save_dict['n_module_types'] = policy_net.n_module_types
-            save_dict['max_num_modules'] = policy_net.max_num_modules
-            save_dict['kernel_size']= policy_net.kernel_size
-            save_dict['n_channels']=policy_net.n_channels
-            save_dict['n_fc_layers']=policy_net.n_fc_layers
-            save_dict['env_vect_size']=policy_net.env_vect_size
-            save_dict['hidden_layer_size']=policy_net.hidden_layer_size
-            save_dict['i_episode'] = i_episode
-            torch.save(save_dict, PATH)
+            # Update the target network, copying all weights and biases in DQN
+            if (opt_ep) % TARGET_UPDATE == 0 and opt_ep>0:
+                target_net.load_state_dict(policy_net_copy.state_dict())
 
+            if (opt_ep % 10000)==0 and opt_ep>10000:
+                for param_group in optimizer.param_groups:
+                    # half the learning rate periodically
+                    param_group['lr'] = param_group['lr']/2.
+                    print( 'LR: ' + str(param_group['lr']) )
+
+
+            if (opt_ep % SAVE_EP == 0):
+                PATH = os.path.join(cwd, 'policy_net_params.pt')
+                save_dict = dict()
+                save_dict['policy_net_state_dict'] = policy_net.state_dict()
+                save_dict['terrain_in_shape'] = policy_net.terrain_in_shape
+                save_dict['n_module_types'] = policy_net.n_module_types
+                save_dict['max_num_modules'] = policy_net.max_num_modules
+                save_dict['kernel_size']= policy_net.kernel_size
+                save_dict['n_channels']=policy_net.n_channels
+                save_dict['n_fc_layers']=policy_net.n_fc_layers
+                save_dict['env_vect_size']=policy_net.env_vect_size
+                save_dict['hidden_layer_size']=policy_net.hidden_layer_size
+                save_dict['i_episode'] = i_episode
+                torch.save(save_dict, PATH)
+
+        time.sleep(0.01) # keep loop from being too fast
 
 if __name__== "__main__":
+
+    # spawn processes
+    torch.multiprocessing.set_start_method('spawn') # needed for CUDA drivers in parallel
 
 
     # device = torch.device('cpu')
@@ -392,8 +429,6 @@ if __name__== "__main__":
     # share memory for multiprocess
     policy_net.share_memory()
 
-    # spawn processes
-    torch.multiprocessing.set_start_method('spawn') # needed for CUDA drivers in parallel
 
     ### Initialize replay buffer
     manager = torch.multiprocessing.Manager()
@@ -401,7 +436,7 @@ if __name__== "__main__":
     current_episode = torch.multiprocessing.Value('L', 0)
 
     processes = []
-    for worker_num in range(8): 
+    for worker_num in range(NUM_SIM_WORKERS): 
         p = torch.multiprocessing.Process(target=pusher_worker, 
                                 args=(policy_net,replay_memory,
                                     current_episode, NUM_EPISODES,worker_num,))

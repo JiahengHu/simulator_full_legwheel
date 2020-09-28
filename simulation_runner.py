@@ -101,7 +101,7 @@ class simulation_runner(object):
                 # env.p.resetDebugVisualizerCamera(3,0,-89.999,[3,0,0.2],physicsClientId=env.physicsClient) 
                 env.p.resetDebugVisualizerCamera(2.5,0,-30,[2.5,0,0.2],physicsClientId=env.physicsClient) 
 
-                env.sim_speed_factor = 2
+                # env.sim_speed_factor = 2
 
         elif self.reward_function == 'Recorded Simulation':
             # load up rewards to look up
@@ -188,12 +188,21 @@ class simulation_runner(object):
             self.terrain_randomizer.randomize_env(
                 [self.envs[i_env].p for i_env in range(self.num_envs)],
                 terrain_block_distance, terrain_block_height)
-
+            # print(terrain_block_distance)
+            # print(terrain_block_height)
 
         # measure their heights
         terrains = self.measure_terrains()
 
         return terrains
+
+    def alter_terrain_height(self, delta_h):
+        for i_env in range(self.num_envs):
+            self.envs[i_env].reset_terrain() # this seems to fix the memory leak
+
+        self.terrain_randomizer.alter_block_heights(
+            [self.envs[i_env].p for i_env in range(self.num_envs)],
+            delta_h)
 
     def check_robot_validity(self, urdf_name):
         is_valid = True
@@ -209,7 +218,7 @@ class simulation_runner(object):
         return is_valid
 
 
-    def load_robots(self,robot_name):
+    def load_robots(self,robot_name, randomize_xyyaw=True, start_xyyaw= None):
         self.robot_name = robot_name
         # load in each robot to the environments
 
@@ -233,7 +242,8 @@ class simulation_runner(object):
                 # n_modules = len(modules_types)
 
                 env = self.envs[i_env]
-                env.reset_robot(urdf_name=urdf_name, randomize_xyyaw=True)
+                env.reset_robot(urdf_name=urdf_name, 
+                    randomize_xyyaw=randomize_xyyaw, start_xyyaw=start_xyyaw)
                 # add a small amount of noise onto the robot start pose
 
             modules_types = env.modules_types
@@ -277,7 +287,8 @@ class simulation_runner(object):
                         self.modules,
                         self.record_video,
                         self.max_xy,
-                        video_name_addition)
+                        video_name_addition,
+                        n_time_steps)
 
 
         elif self.reward_function == 'Recorded Simulation':
@@ -312,11 +323,12 @@ class simulation_runner(object):
 
 
 
-def simulate_robot( envs, modules, record_video, max_xy, video_name_addition):
+def simulate_robot( envs, modules, record_video, max_xy, 
+    video_name_addition, n_time_steps=150):
     # NOTE: assumes that all envs have the same robot loaded
     num_envs = len(envs)
 
-    n_time_steps=150
+    
     module_action_len= list(np.diff(envs[0].action_indexes))
     attachments = envs[0].attachments
     n_modules = len(envs[0].modules_types)
@@ -381,7 +393,7 @@ def simulate_robot( envs, modules, record_video, max_xy, video_name_addition):
             for mm in range(n_modules):
                 u_out_mean.append(out_mean[mm][:,:module_action_len[mm]])
                 tau_out_mean.append(out_mean[mm][:,module_action_len[mm]:])
-            u_np = torch.cat(u_out_mean,-1).squeeze().numpy()
+            u_np = torch.cat(u_out_mean,-1).numpy()
         
         for i_env in range(num_envs):
             if robot_alive[i_env]:

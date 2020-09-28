@@ -226,8 +226,8 @@ class TerrainRandomizer():
 
     self._MIN_BLOCK_DISTANCE = _MIN_BLOCK_DISTANCE
     self._MAX_BLOCK_HEIGHT = _MAX_BLOCK_HEIGHT
-    self.block_IDs, self.block_centers, self.half_length1_list,\
-      self.half_length2_list,self.half_height_list = self._generate_convex_blocks(pybullet_clients)
+    self.block_IDs , self.block_centers, self.half_length1_list,\
+      self.half_length2_list, self.half_height_list = self._generate_convex_blocks(pybullet_clients)
 
   def _generate_convex_blocks(self,pybullet_clients):
     """Adds random convex blocks to the flat ground.
@@ -250,7 +250,7 @@ class TerrainRandomizer():
     half_height_list = list()
     block_centers = list()
 
-    for center in block_centers:
+    for center in block_centers_out:
       # We want the blocks to be in front of the robot.
       shifted_center = np.array(center) - [1, _GRID_WIDTH / 2]
 
@@ -271,6 +271,7 @@ class TerrainRandomizer():
       half_length2_list.append(half_length2)
       half_height_list.append(half_height)
 
+
       # add the block to all the envs
       for i_env in range(len(pybullet_clients)):
         pybullet_client = pybullet_clients[i_env]
@@ -290,23 +291,28 @@ class TerrainRandomizer():
             baseVisualShapeIndex = visual_id,
             basePosition=[shifted_center[0], shifted_center[1], half_height])
         block_IDs[i_env].append(block_ID) 
+
+    # print(block_centers)
+    # print(half_height_list)
     return block_IDs, block_centers, half_length1_list,half_length2_list,half_height_list
 
               # rgbaColor = [0.7*block_color, 0.7*block_color, 1.0*block_color, 1],
 
   def alter_block_heights(self,pybullet_clients, delta_height):
-    for i_env in range(len(pybullet_clients)):
-        block_IDs_i = self.block_IDs[i_env]
-        pybullet_client = pybullet_clients[i_env]
-        for block_ID in block_IDs_i:
-          pybullet_client.removeBody(block_ID)
+    # for i_env in range(len(pybullet_clients)):
+    #     block_IDs_i = self.block_IDs[i_env]
+    #     pybullet_client = pybullet_clients[i_env]
+    #     for block_ID in block_IDs_i:
+    #       pybullet_client.removeBody(block_ID)
     block_IDs = [list() for i in range(len(pybullet_clients))]
 
     for ib in range(len(self.block_centers)):
       center = self.block_centers[ib]
+      shifted_center = np.array(center) - [1, _GRID_WIDTH / 2]
+
       half_length1 = self.half_length1_list[ib]
       half_length2 = self.half_length2_list[ib]
-      self.half_height_list[ib] = min(0, self.half_height_list[ib] + delta_height)
+      self.half_height_list[ib] = max(0, self.half_height_list[ib] + delta_height)
       half_height = self.half_height_list[ib]
 
       # add the block to all the envs

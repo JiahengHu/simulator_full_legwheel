@@ -85,23 +85,29 @@ class robot_env:
 
 
     # reset robot
-    def reset_robot(self, randomize_start=True,
+    def reset_robot(self, randomize_start=False,
         randomize_xyyaw = False,
-        urdf_name = 'wnwwnw', start_yaw = None):
+        urdf_name = 'wnwwnw', start_xyyaw = None):
         p = self.p
 
         self.reset_debug_items()
-
         startPosition=[0,0,0.3] # high enough that nothing touches the ground
         startOrientationRPY = [0,0,0]
+
+        # allow for starting yaw to be overridden by user
+        if start_xyyaw is not None: 
+            startOrientationRPY[2] = start_xyyaw[2]
+            startPosition[0] = start_xyyaw[0]
+            startPosition[1] = start_xyyaw[1]
+
+
+
         if randomize_xyyaw:
             startPosition[0]+= (np.random.rand()*2-1)*0.02
             startPosition[1]+= (np.random.rand()*2-1)*0.02
             startOrientationRPY[2] += (np.random.rand()*2-1)*0.02
 
-        # allow for starting yaw to be overridden by user
-        if start_yaw is not None: 
-            startOrientationRPY[2] = start_yaw
+
 
         startOrientation = p.getQuaternionFromEuler(startOrientationRPY)   
 
@@ -254,10 +260,10 @@ class robot_env:
 
         # set to a centered initial joint angle with a little noise
         # print(len(self.moving_joint_inds))
-        if randomize_start:
-            joint_noise = pi/8
-        else:
-            joint_noise = 0
+        # if randomize_start:
+        #     joint_noise = pi/8
+        # else:
+        joint_noise = 0
         for i in range(self.num_joints):
             center = self.moving_joint_centers[i]
             jind = self.moving_joint_inds[i]
@@ -283,21 +289,21 @@ class robot_env:
             # if self.show_GUI:
             #     time.sleep(self.time_step/self.sim_speed_factor)
 
-        # set joints to random small velocities after its dropped to the ground
-        if randomize_start:
-            joint_noise = 0.1
-            joint_states = p.getJointStates(self.robotID,
-                                self.moving_joint_inds,
-                                physicsClientId=self.physicsClient)
-            for i in range(self.num_joints):
-                theta = joint_states[i][0]
-                jind = self.moving_joint_inds[i]
-                max_vel = self.moving_joint_max_velocities[i]
-                p.resetJointState( bodyUniqueId=self.robotID, 
-                    jointIndex = jind,
-                    targetValue= theta, 
-                    targetVelocity = np.random.uniform(-1,1)*joint_noise*max_vel,
-                    physicsClientId=self.physicsClient )
+        # # set joints to random small velocities after its dropped to the ground
+        # if randomize_start:
+        #     joint_noise = 0.1
+        #     joint_states = p.getJointStates(self.robotID,
+        #                         self.moving_joint_inds,
+        #                         physicsClientId=self.physicsClient)
+        #     for i in range(self.num_joints):
+        #         theta = joint_states[i][0]
+        #         jind = self.moving_joint_inds[i]
+        #         max_vel = self.moving_joint_max_velocities[i]
+        #         p.resetJointState( bodyUniqueId=self.robotID, 
+        #             jointIndex = jind,
+        #             targetValue= theta, 
+        #             targetVelocity = np.random.uniform(-1,1)*joint_noise*max_vel,
+        #             physicsClientId=self.physicsClient )
 
 
         self.update_state()
