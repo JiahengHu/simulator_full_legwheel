@@ -8,10 +8,10 @@
   all of the HEBI components -->
   <!-- <xacro:include filename="end_effector.xacro"/> -->
   <!-- This automatically loads the gazebo plugin for xacro models
-       which include hebi.xacro -->
+       which include hebi.xacro 
   <gazebo>
-    <plugin filename="libhebi_gazebo_plugin.so" name="hebi_gazebo_plugin"/>
-  </gazebo>
+    <plugin name="hebi_gazebo_plugin" filename="libhebi_gazebo_plugin.so"/>
+  </gazebo>-->
   <link name="chassis">
     <visual>
       <geometry>
@@ -57,18 +57,18 @@
   </joint>
   <link name="wheel_1/J1_base/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -77,9 +77,6 @@
       <inertia ixx="0.00015" ixy="0.0000341" ixz="0.0000118" iyy="0.000255" iyz="0.00000229" izz="0.000350"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_1/J1_base/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_1/J1_base/X5_9" type="revolute">
     <parent link="wheel_1/J1_base/INPUT_INTERFACE"/>
     <child link="wheel_1/shoulder_bracket/INPUT_INTERFACE"/>
@@ -179,32 +176,25 @@
       <inertia ixx="0.00030960000000000004" ixy="0.0" ixz="0.0" iyy="0.00030960000000000004" iyz="0.0" izz="0.00030960000000000004"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_1/shoulder_bracket/INPUT_INTERFACE">
-    <material>Gazebo/Black</material>
-  </gazebo>
   <joint name="wheel_1/shoulder_bracket/OUTPUT_INTERFACE" type="fixed">
     <parent link="wheel_1/shoulder_bracket/INPUT_INTERFACE"/>
     <child link="wheel_1/J2_shoulder/INPUT_INTERFACE"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 -.0375 .055"/>
   </joint>
-  <gazebo reference="wheel_1/shoulder_bracket/OUTPUT_INTERFACE">
-    <disableFixedJointLumping>true</disableFixedJointLumping>
-    <preserveFixedJoint>true</preserveFixedJoint>
-  </gazebo>
   <link name="wheel_1/J2_shoulder/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -213,9 +203,6 @@
       <inertia ixx="0.000246" ixy="0.0000444" ixz="0.0000266" iyy="0.000380" iyz="0.00000422" izz="0.000463"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_1/J2_shoulder/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_1/J2_shoulder/X8_9" type="continuous">
     <parent link="wheel_1/J2_shoulder/INPUT_INTERFACE"/>
     <child link="wheel_1/wheel/INPUT_INTERFACE"/>
@@ -241,7 +228,7 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.0254" radius="0.1016"/>
+        <cylinder length="0.0254" radius="0.105"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0.015"/>
     </collision>
@@ -254,18 +241,18 @@
   </joint>
   <link name="wheel_2/J1_base/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -274,9 +261,6 @@
       <inertia ixx="0.00015" ixy="0.0000341" ixz="0.0000118" iyy="0.000255" iyz="0.00000229" izz="0.000350"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_2/J1_base/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_2/J1_base/X5_9" type="revolute">
     <parent link="wheel_2/J1_base/INPUT_INTERFACE"/>
     <child link="wheel_2/shoulder_bracket/INPUT_INTERFACE"/>
@@ -376,32 +360,25 @@
       <inertia ixx="0.00030960000000000004" ixy="0.0" ixz="0.0" iyy="0.00030960000000000004" iyz="0.0" izz="0.00030960000000000004"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_2/shoulder_bracket/INPUT_INTERFACE">
-    <material>Gazebo/Black</material>
-  </gazebo>
   <joint name="wheel_2/shoulder_bracket/OUTPUT_INTERFACE" type="fixed">
     <parent link="wheel_2/shoulder_bracket/INPUT_INTERFACE"/>
     <child link="wheel_2/J2_shoulder/INPUT_INTERFACE"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 -.0375 .055"/>
   </joint>
-  <gazebo reference="wheel_2/shoulder_bracket/OUTPUT_INTERFACE">
-    <disableFixedJointLumping>true</disableFixedJointLumping>
-    <preserveFixedJoint>true</preserveFixedJoint>
-  </gazebo>
   <link name="wheel_2/J2_shoulder/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -410,9 +387,6 @@
       <inertia ixx="0.000246" ixy="0.0000444" ixz="0.0000266" iyy="0.000380" iyz="0.00000422" izz="0.000463"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_2/J2_shoulder/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_2/J2_shoulder/X8_9" type="continuous">
     <parent link="wheel_2/J2_shoulder/INPUT_INTERFACE"/>
     <child link="wheel_2/wheel/INPUT_INTERFACE"/>
@@ -438,7 +412,7 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.0254" radius="0.1016"/>
+        <cylinder length="0.0254" radius="0.105"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0.015"/>
     </collision>
@@ -451,18 +425,18 @@
   </joint>
   <link name="wheel_3/J1_base/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -471,9 +445,6 @@
       <inertia ixx="0.00015" ixy="0.0000341" ixz="0.0000118" iyy="0.000255" iyz="0.00000229" izz="0.000350"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_3/J1_base/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_3/J1_base/X5_9" type="revolute">
     <parent link="wheel_3/J1_base/INPUT_INTERFACE"/>
     <child link="wheel_3/shoulder_bracket/INPUT_INTERFACE"/>
@@ -573,32 +544,25 @@
       <inertia ixx="0.00030960000000000004" ixy="0.0" ixz="0.0" iyy="0.00030960000000000004" iyz="0.0" izz="0.00030960000000000004"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_3/shoulder_bracket/INPUT_INTERFACE">
-    <material>Gazebo/Black</material>
-  </gazebo>
   <joint name="wheel_3/shoulder_bracket/OUTPUT_INTERFACE" type="fixed">
     <parent link="wheel_3/shoulder_bracket/INPUT_INTERFACE"/>
     <child link="wheel_3/J2_shoulder/INPUT_INTERFACE"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 -.0375 .055"/>
   </joint>
-  <gazebo reference="wheel_3/shoulder_bracket/OUTPUT_INTERFACE">
-    <disableFixedJointLumping>true</disableFixedJointLumping>
-    <preserveFixedJoint>true</preserveFixedJoint>
-  </gazebo>
   <link name="wheel_3/J2_shoulder/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -607,9 +571,6 @@
       <inertia ixx="0.000246" ixy="0.0000444" ixz="0.0000266" iyy="0.000380" iyz="0.00000422" izz="0.000463"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_3/J2_shoulder/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_3/J2_shoulder/X8_9" type="continuous">
     <parent link="wheel_3/J2_shoulder/INPUT_INTERFACE"/>
     <child link="wheel_3/wheel/INPUT_INTERFACE"/>
@@ -635,7 +596,7 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.0254" radius="0.1016"/>
+        <cylinder length="0.0254" radius="0.105"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0.015"/>
     </collision>
@@ -648,18 +609,18 @@
   </joint>
   <link name="wheel_4/J1_base/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -668,9 +629,6 @@
       <inertia ixx="0.00015" ixy="0.0000341" ixz="0.0000118" iyy="0.000255" iyz="0.00000229" izz="0.000350"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_4/J1_base/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_4/J1_base/X5_9" type="revolute">
     <parent link="wheel_4/J1_base/INPUT_INTERFACE"/>
     <child link="wheel_4/shoulder_bracket/INPUT_INTERFACE"/>
@@ -770,32 +728,25 @@
       <inertia ixx="0.00030960000000000004" ixy="0.0" ixz="0.0" iyy="0.00030960000000000004" iyz="0.0" izz="0.00030960000000000004"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_4/shoulder_bracket/INPUT_INTERFACE">
-    <material>Gazebo/Black</material>
-  </gazebo>
   <joint name="wheel_4/shoulder_bracket/OUTPUT_INTERFACE" type="fixed">
     <parent link="wheel_4/shoulder_bracket/INPUT_INTERFACE"/>
     <child link="wheel_4/J2_shoulder/INPUT_INTERFACE"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 -.0375 .055"/>
   </joint>
-  <gazebo reference="wheel_4/shoulder_bracket/OUTPUT_INTERFACE">
-    <disableFixedJointLumping>true</disableFixedJointLumping>
-    <preserveFixedJoint>true</preserveFixedJoint>
-  </gazebo>
   <link name="wheel_4/J2_shoulder/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -804,9 +755,6 @@
       <inertia ixx="0.000246" ixy="0.0000444" ixz="0.0000266" iyy="0.000380" iyz="0.00000422" izz="0.000463"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_4/J2_shoulder/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_4/J2_shoulder/X8_9" type="continuous">
     <parent link="wheel_4/J2_shoulder/INPUT_INTERFACE"/>
     <child link="wheel_4/wheel/INPUT_INTERFACE"/>
@@ -832,7 +780,7 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.0254" radius="0.1016"/>
+        <cylinder length="0.0254" radius="0.105"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0.015"/>
     </collision>
@@ -845,18 +793,18 @@
   </joint>
   <link name="wheel_5/J1_base/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -865,9 +813,6 @@
       <inertia ixx="0.00015" ixy="0.0000341" ixz="0.0000118" iyy="0.000255" iyz="0.00000229" izz="0.000350"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_5/J1_base/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_5/J1_base/X5_9" type="revolute">
     <parent link="wheel_5/J1_base/INPUT_INTERFACE"/>
     <child link="wheel_5/shoulder_bracket/INPUT_INTERFACE"/>
@@ -967,32 +912,25 @@
       <inertia ixx="0.00030960000000000004" ixy="0.0" ixz="0.0" iyy="0.00030960000000000004" iyz="0.0" izz="0.00030960000000000004"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_5/shoulder_bracket/INPUT_INTERFACE">
-    <material>Gazebo/Black</material>
-  </gazebo>
   <joint name="wheel_5/shoulder_bracket/OUTPUT_INTERFACE" type="fixed">
     <parent link="wheel_5/shoulder_bracket/INPUT_INTERFACE"/>
     <child link="wheel_5/J2_shoulder/INPUT_INTERFACE"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 -.0375 .055"/>
   </joint>
-  <gazebo reference="wheel_5/shoulder_bracket/OUTPUT_INTERFACE">
-    <disableFixedJointLumping>true</disableFixedJointLumping>
-    <preserveFixedJoint>true</preserveFixedJoint>
-  </gazebo>
   <link name="wheel_5/J2_shoulder/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -1001,9 +939,6 @@
       <inertia ixx="0.000246" ixy="0.0000444" ixz="0.0000266" iyy="0.000380" iyz="0.00000422" izz="0.000463"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_5/J2_shoulder/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_5/J2_shoulder/X8_9" type="continuous">
     <parent link="wheel_5/J2_shoulder/INPUT_INTERFACE"/>
     <child link="wheel_5/wheel/INPUT_INTERFACE"/>
@@ -1029,7 +964,7 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.0254" radius="0.1016"/>
+        <cylinder length="0.0254" radius="0.105"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0.015"/>
     </collision>
@@ -1042,18 +977,18 @@
   </joint>
   <link name="wheel_6/J1_base/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.0125"/>
       <geometry>
-        <mesh filename="X5.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.025" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -1062,9 +997,6 @@
       <inertia ixx="0.00015" ixy="0.0000341" ixz="0.0000118" iyy="0.000255" iyz="0.00000229" izz="0.000350"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_6/J1_base/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_6/J1_base/X5_9" type="revolute">
     <parent link="wheel_6/J1_base/INPUT_INTERFACE"/>
     <child link="wheel_6/shoulder_bracket/INPUT_INTERFACE"/>
@@ -1164,32 +1096,25 @@
       <inertia ixx="0.00030960000000000004" ixy="0.0" ixz="0.0" iyy="0.00030960000000000004" iyz="0.0" izz="0.00030960000000000004"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_6/shoulder_bracket/INPUT_INTERFACE">
-    <material>Gazebo/Black</material>
-  </gazebo>
   <joint name="wheel_6/shoulder_bracket/OUTPUT_INTERFACE" type="fixed">
     <parent link="wheel_6/shoulder_bracket/INPUT_INTERFACE"/>
     <child link="wheel_6/J2_shoulder/INPUT_INTERFACE"/>
     <origin rpy="1.5707963267948966 0 0" xyz="0 -.0375 .055"/>
   </joint>
-  <gazebo reference="wheel_6/shoulder_bracket/OUTPUT_INTERFACE">
-    <disableFixedJointLumping>true</disableFixedJointLumping>
-    <preserveFixedJoint>true</preserveFixedJoint>
-  </gazebo>
   <link name="wheel_6/J2_shoulder/INPUT_INTERFACE">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
       <material name="red">
         <color rgba=".82 0.06 0.06 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0.02"/>
       <geometry>
-        <mesh filename="X8.stl" scale="0.001 0.001 0.001"/>
+        <cylinder length="0.04" radius="0.035"/>
       </geometry>
     </collision>
     <inertial>
@@ -1198,9 +1123,6 @@
       <inertia ixx="0.000246" ixy="0.0000444" ixz="0.0000266" iyy="0.000380" iyz="0.00000422" izz="0.000463"/>
     </inertial>
   </link>
-  <gazebo reference="wheel_6/J2_shoulder/INPUT_INTERFACE">
-    <material>Gazebo/Red</material>
-  </gazebo>
   <joint name="wheel_6/J2_shoulder/X8_9" type="continuous">
     <parent link="wheel_6/J2_shoulder/INPUT_INTERFACE"/>
     <child link="wheel_6/wheel/INPUT_INTERFACE"/>
@@ -1226,7 +1148,7 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.0254" radius="0.1016"/>
+        <cylinder length="0.0254" radius="0.105"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0.015"/>
     </collision>

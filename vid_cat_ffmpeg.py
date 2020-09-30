@@ -7,7 +7,7 @@ data_subfolder = cwd
 print('Concatenating videos')
 vidlist = os.path.join(data_subfolder,'vidlist.txt')
 # create a list of the video names for ffmpeg
-fnames = ['lwllwl_live_selection', 'llllll_live_selection']
+fnames = ['lwllwl_live_0', 'lwllwl_live_1', 'llllll_live_2']
 with open(vidlist, 'w') as f:
     for fname in fnames:
 

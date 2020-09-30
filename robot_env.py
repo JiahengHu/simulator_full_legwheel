@@ -24,16 +24,27 @@ class robot_env:
             # self.physicsClient = p.connect(p.GUI)# p.DIRECT for non-graphical version
             p = bc.BulletClient(connection_mode=pybullet.GUI)
             self.physicsClient = p._client
+
+
+                    # p.resetDebugVisualizerCamera(2.75,0,-30,[3.2,0,0.2],physicsClientId=self.physicsClient) 
+            p.resetDebugVisualizerCamera(2,0,-30,[1,0,0.2],physicsClientId=self.physicsClient) 
+            
+            p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW,0,physicsClientId=self.physicsClient)
+            p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW,0,physicsClientId=self.physicsClient)
+            p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW,0,physicsClientId=self.physicsClient)
+            p.configureDebugVisualizer(p.COV_ENABLE_GUI,0,physicsClientId=self.physicsClient)
+
         else:
             # initialize physics engine when environment is made    
             # self.physicsClient = p.connect(p.DIRECT)# p.DIRECT for non-graphical version
             p = bc.BulletClient(connection_mode=pybullet.DIRECT)
             self.physicsClient = p._client
 
-        p.resetDebugVisualizerCamera(2,0,-25,[0,0,0],physicsClientId=self.physicsClient) # I like this view
-        p.configureDebugVisualizer(p.COV_ENABLE_GUI,0,physicsClientId=self.physicsClient)
+
+        self.follow_with_camera = False # follow the robot with camera
+
         # turn off shadows
-        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS,0,physicsClientId=self.physicsClient)
+        # p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS,0,physicsClientId=self.physicsClient)
         
         self.time_step = 1./240. # default 1/240 ~= 0.004
         self.n_time_steps_per_step = 20 # 20/240 = 0.08
@@ -148,7 +159,8 @@ class robot_env:
                             | p.URDF_USE_SELF_COLLISION
                             | p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES),
                            physicsClientId=self.physicsClient)
-              # 
+              #                            | p.URDF_MERGE_FIXED_LINKS
+
 
             # count all joints, including fixed ones
             num_joints_total = p.getNumJoints(self.robotID,
@@ -526,11 +538,20 @@ class robot_env:
                     linkWorldPosition, linkWorldOrientationQuat = p.getBasePositionAndOrientation(
                         bodyUniqueId=self.robotID,physicsClientId=self.physicsClient)
                     self.pos_xyz = linkWorldPosition
-                    self.draw_body_arrows()
+                    # self.draw_body_arrows()
+
+                if self.follow_with_camera:
+                    linkWorldPosition, linkWorldOrientationQuat = p.getBasePositionAndOrientation(
+                        bodyUniqueId=self.robotID,physicsClientId=self.physicsClient)
+                    self.pos_xyz = linkWorldPosition
+                    p.resetDebugVisualizerCamera(2,0,-30,[1+self.pos_xyz[0],self.pos_xyz[1],0.2],
+                    physicsClientId=self.physicsClient) 
+
 
                 time.sleep(self.time_step/self.sim_speed_factor)
 
         self.update_state()
+
 
     # sets position control commands for a timestep
     def step_pos_control(self, pos):

@@ -12,7 +12,8 @@ class dqn(nn.Module):
         n_channels = 2, 
         n_fc_layers = 4,
         env_vect_size=10,
-        hidden_layer_size = 100):
+        hidden_layer_size = 100,
+        n_conv_layers = 2):
         super(dqn, self).__init__()
 
         self.terrain_in_shape = terrain_in_shape #(n_channels_in, x, y)
@@ -23,13 +24,23 @@ class dqn(nn.Module):
         self.env_vect_size = env_vect_size
         self.hidden_layer_size = hidden_layer_size
         self.n_fc_layers = n_fc_layers
+        self.n_conv_layers= n_conv_layers
 
         # terrain preprocess layers
         self.conv_out_size = terrain_in_shape[2]*terrain_in_shape[1]*n_channels
+        self.conv_layers = nn.ModuleList()
+
+        # self.conv_layers.append(torch.nn.Conv2d(terrain_in_shape[0], n_channels, 
+        #     kernel_size=kernel_size, stride=1, padding=kernel_size//2) )
+        # for i in range(self.n_conv_layers):
+        #     self.conv_layers.append(torch.nn.Conv2d(n_channels, n_channels, 
+        #         kernel_size=kernel_size, stride=1, padding=kernel_size//2) )
+
         self.conv1 = torch.nn.Conv2d(terrain_in_shape[0], n_channels, 
-            kernel_size=kernel_size, stride=1, padding=kernel_size//2)
+            kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
         self.conv2 = torch.nn.Conv2d(n_channels, n_channels, 
-            kernel_size=kernel_size, stride=1, padding=kernel_size//2)
+                kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
+
         self.fc_terrain = nn.Linear(self.conv_out_size, env_vect_size)
 
         # Combine design and terrain layers
@@ -47,8 +58,13 @@ class dqn(nn.Module):
 
 
     def forward(self, designs, terrains):
-        x = F.relu(self.conv1(terrains))
+        x = terrains
+        # for i in range(self.n_conv_layers):
+        #     x = F.relu(self.conv_layers[i](x))
+
+        x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
+
         # print(self.conv_out_size)
         # print(x.shape)
         x = x.view(-1, self.conv_out_size)

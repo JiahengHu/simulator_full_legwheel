@@ -206,6 +206,7 @@ class TerrainRandomizer():
   def __init__(
       self):
     self.block_IDs = []
+    self.block_height_addition = 1 # add to block height belowground
     
     """Initializes the randomizer.
 
@@ -278,18 +279,21 @@ class TerrainRandomizer():
 
         box_id = pybullet_client.createCollisionShape(
             pybullet_client.GEOM_BOX,
-            halfExtents=[half_length1, half_length2, half_height])
+            halfExtents=[half_length1, half_length2, half_height+self.block_height_addition])
+            # halfExtents=[half_length1, half_length2, half_height])
         block_color = 1 - np.interp(2*half_height,
                [ _MIN_BLOCK_HEIGHT, self._MAX_BLOCK_HEIGHT_FOR_COLOR], [0,1]) # scales 0-1 for block color
         visual_id = pybullet_client.createVisualShape(
             pybullet_client.GEOM_BOX,
             rgbaColor = [block_color, block_color, block_color, 1],
-            halfExtents=[half_length1, half_length2, half_height])
+            halfExtents=[half_length1, half_length2, half_height+self.block_height_addition])
+            # halfExtents=[half_length1, half_length2, half_height])
         block_ID = pybullet_client.createMultiBody(
             baseMass=0,
             baseCollisionShapeIndex=box_id,
             baseVisualShapeIndex = visual_id,
-            basePosition=[shifted_center[0], shifted_center[1], half_height])
+            basePosition=[shifted_center[0], shifted_center[1], half_height-self.block_height_addition])
+            # basePosition=[shifted_center[0], shifted_center[1], half_height])
         block_IDs[i_env].append(block_ID) 
 
     # print(block_centers)
@@ -321,18 +325,33 @@ class TerrainRandomizer():
 
         box_id = pybullet_client.createCollisionShape(
             pybullet_client.GEOM_BOX,
-            halfExtents=[half_length1, half_length2, half_height])
+            halfExtents=[half_length1, half_length2, half_height+self.block_height_addition])
+            # halfExtents=[half_length1, half_length2, half_height])
         block_color = 1 - np.interp(2*half_height,
                [ _MIN_BLOCK_HEIGHT, self._MAX_BLOCK_HEIGHT_FOR_COLOR], [0,1]) # scales 0-1 for block color
         visual_id = pybullet_client.createVisualShape(
             pybullet_client.GEOM_BOX,
             rgbaColor = [block_color, block_color, block_color, 1],
-            halfExtents=[half_length1, half_length2, half_height])
+            halfExtents=[half_length1, half_length2, half_height+self.block_height_addition])
+            # halfExtents=[half_length1, half_length2, half_height])
         block_ID = pybullet_client.createMultiBody(
             baseMass=0,
             baseCollisionShapeIndex=box_id,
             baseVisualShapeIndex = visual_id,
-            basePosition=[shifted_center[0], shifted_center[1], half_height])
+            basePosition=[shifted_center[0], shifted_center[1], half_height-self.block_height_addition])
+            # basePosition=[shifted_center[0], shifted_center[1], half_height])
         block_IDs[i_env].append(block_ID) 
     self.block_IDs = block_IDs
     
+  def set_block_heights(self, pybullet_clients, new_height):
+
+    for i_env in range(len(pybullet_clients)):
+      pybullet_client = pybullet_clients[i_env]
+      for ib in range(len(self.block_IDs[i_env])):
+        block_ID = self.block_IDs[i_env][ib]
+        center = self.block_centers[ib]
+        shifted_center = np.array(center) - [1, _GRID_WIDTH / 2]
+        pybullet_client.resetBasePositionAndOrientation(
+            bodyUniqueId = block_ID,
+            posObj=[shifted_center[0], shifted_center[1], self.half_height_list[ib]+new_height-self.block_height_addition],
+            ornObj = pybullet_client.getQuaternionFromEuler([0,0,0]))

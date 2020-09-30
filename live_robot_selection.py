@@ -2,7 +2,7 @@
 import torch
 from design_assembler import module_types, num_module_types
 from design_assembler import add_module, module_vector_list_to_robot_name
-from simulation_runner import simulation_runner, terrain_grid_shape
+from simulation_runner2 import simulation_runner, terrain_grid_shape
 from dqn import dqn
 import torch.nn.functional as F
 import os
@@ -57,7 +57,7 @@ def run_episode(terrains):
         # add a module
         next_designs = torch.zeros_like(designs)
         for i_env in range(n_samples):
-            next_designs[i_env,:] = add_module(
+            next_designs[i_env,:], penalty = add_module(
                                     designs[i_env,:], 
                                     i_dqn, MAX_N_MODULES,
                                     actions[i_env])
@@ -103,23 +103,50 @@ def run_episode(terrains):
 if __name__== "__main__":
     sim_runner = simulation_runner(1, show_GUI= True)
     terrain = sim_runner.randomize_terrains(terrain_block_height=0.01,
-        terrain_block_distance=0.4)
+        terrain_block_distance=0.7)
     xyyaw = [0,0,0]
-    sim_runner.record_video=True
-    num_increases = 3
-    robot_now = None
-    for i in range(num_increases):
-        terrain = sim_runner.measure_terrains()
-        robot_names_list, state_action_value =  run_episode(terrain)
-        robot_now = robot_names_list[0] 
-        sim_runner.load_robots(robot_now, 
-            randomize_xyyaw=False, start_xyyaw = xyyaw)
-        r = sim_runner.run_sims(n_time_steps=50, video_name_addition='_live_selection')
-        xyyaw = [sim_runner.envs[0].pos_xyz[0],
-            sim_runner.envs[0].pos_xyz[1],
-            sim_runner.envs[0].pos_rpy[2]]
-        print(r)
-        if i<(num_increases-1):
-            sim_runner.alter_terrain_height(0.015)
+    # sim_runner.record_video=True
+    slider_ID = sim_runner.envs[0].p.addUserDebugParameter(
+                            paramName = 'Terrain max height',
+                            rangeMin = 0, rangeMax= 0.1,startValue =0)
 
-    import vid_cat_ffmpeg
+    sim_runner.envs[0].p.configureDebugVisualizer(sim_runner.envs[0].p.COV_ENABLE_GUI,1)
+    sim_runner.envs[0].follow_with_camera = True # follow the robot with camera
+
+    robot_now = None
+
+    terrain = sim_runner.measure_terrains()
+    robot_names_list, state_action_value =  run_episode(terrain)
+    robot_now = robot_names_list[0] 
+
+    sim_runner.load_robots(robot_now, 
+        randomize_xyyaw=False, start_xyyaw = xyyaw)
+    xyyaw = [sim_runner.envs[0].pos_xyz[0],
+                sim_runner.envs[0].pos_xyz[1],
+                sim_runner.envs[0].pos_rpy[2]]
+    # for step in range(100):
+    while True:
+        param_out = sim_runner.step_simulation(debug_params= [slider_ID])
+        xyyaw = [sim_runner.envs[0].pos_xyz[0],
+                    sim_runner.envs[0].pos_xyz[1],
+                    sim_runner.envs[0].pos_rpy[2]]
+        if param_out is not None:
+            terrain_new = terrain.clone()
+            terrain_new[terrain_new>0.001 ] += param_out
+
+            robot_names_list, state_action_value =  run_episode(terrain_new)
+            robot_new = robot_names_list[0]
+
+            if not(robot_new == robot_now):
+
+                robot_now = robot_new
+
+                sim_runner.load_robots(robot_now, 
+                    randomize_xyyaw=False, start_xyyaw = xyyaw)
+        if xyyaw[0]>9:
+            env_state = sim_runner.envs[0].get_state()
+            env_state[0][0:2] = 0 
+            sim_runner.envs[0].set_state(env_state)
+
+
+    # import vid_cat_ffmpeg

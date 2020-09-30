@@ -80,10 +80,20 @@
 
     <link name="${name}/INPUT_INTERFACE">
       <visual>
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <geometry>
-          <mesh filename="${mesh_filename}" scale="0.001 0.001 0.001"/>
-        </geometry>
+        <xacro:if value="${model_name.startswith('X5')}">
+          <origin xyz="0 0 0.0125" rpy="0 0 0" />
+          <geometry>
+            <cylinder radius="0.035" length="0.025"/>
+          </geometry>
+        </xacro:if>
+        <xacro:if value="${model_name.startswith('X8')}">
+          <origin xyz="0 0 0.02" rpy="0 0 0" />
+          <geometry>
+            <cylinder radius="0.035" length="0.04"/>
+          </geometry>
+        </xacro:if>
+
+
         <xacro:unless value="${model_name.startswith('R8')}">
           <xacro:red_material/>
         </xacro:unless>
@@ -92,10 +102,18 @@
         </xacro:if>
       </visual>
       <collision>
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <geometry>
-          <mesh filename="${mesh_filename}" scale="0.001 0.001 0.001"/>
-        </geometry>
+        <xacro:if value="${model_name.startswith('X5')}">
+          <origin xyz="0 0 0.0125" rpy="0 0 0" />
+          <geometry>
+            <cylinder radius="0.035" length="0.025"/>
+          </geometry>
+        </xacro:if>
+        <xacro:if value="${model_name.startswith('X8')}">
+          <origin xyz="0 0 0.02" rpy="0 0 0" />
+          <geometry>
+            <cylinder radius="0.035" length="0.04"/>
+          </geometry>
+        </xacro:if>
       </collision>
       <inertial>
         <xacro:if value="${model_name.startswith('X5')}">
@@ -122,14 +140,7 @@
       </inertial>
     </link>
 
-    <gazebo reference="${name}/INPUT_INTERFACE">
-      <xacro:unless value="${model_name.startswith('R8')}">
-        <xacro:gazebo_red_material/>
-      </xacro:unless>
-      <xacro:if value="${model_name.startswith('R8')}">
-        <xacro:gazebo_black_material/>
-      </xacro:if>
-    </gazebo>
+    
 
     <joint name="${name}/${model_name}" type="${urdf_joint_type}">
       <parent link="${name}/INPUT_INTERFACE"/>

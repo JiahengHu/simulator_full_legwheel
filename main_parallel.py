@@ -12,7 +12,7 @@ but all possible state action values on the tree, recursively called,
 
 import torch
 from replay_buffer import replay_buffer
-from design_assembler import module_types, num_module_types
+from design_assembler import module_types, num_module_types, module_penalties
 from design_assembler import add_module, module_vector_list_to_robot_name
 from simulation_runner import simulation_runner, terrain_grid_shape
 from dqn import dqn
@@ -23,21 +23,29 @@ import logging
 import numpy as np
 import time
 
+# utility that helps manage the logging mess for multiple workers
+# downloaded the main file from
+# https://github.com/jruere/multiprocessing-logging
+import multiprocessing_logging
+multiprocessing_logging.install_mp_handler()
+
+
 
 cwd = os.path.dirname(os.path.realpath(__file__))
 
-# log_path =  os.path.join(cwd, "output.log")
-# logging.basicConfig(level=logging.INFO,
-#                     format='%(message)s', 
-#                     filename=log_path,
-#                     filemode='w')
-# console = logging.StreamHandler()
-# console.setLevel(logging.INFO)
-# formatter = logging.Formatter('%(message)s')
-# console.setFormatter(formatter)
-# logging.getLogger('').addHandler(console)
-# print = logging.info
+log_path =  os.path.join(cwd, "output_par.log")
+logging.basicConfig(level=logging.INFO,
+                    format='%(message)s', 
+                    filename=log_path,
+                    filemode='w')
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+formatter = logging.Formatter('%(message)s')
+console.setFormatter(formatter)
+logging.getLogger('').addHandler(console)
+print = logging.info
 
+print('module_penalties: ' + str(module_penalties))
 
 ### hyperparameters
 cpu_count = torch.multiprocessing.cpu_count()
@@ -144,12 +152,13 @@ def pusher_worker(policy_net,
             # add a module
             next_designs = torch.zeros_like(designs)
             for i_env in range(1):
-                next_designs[i_env,:] = add_module(
+                next_designs[i_env,:], penalty = add_module(
                                         designs[i_env,:], 
                                         i_dqn, MAX_N_MODULES,
                                         actions[i_env])
 
-            reward = torch.zeros(1) # adding a module has no cost for now
+            reward = -torch.tensor(penalty,dtype=torch.float32) # adding a module has no cost for now
+            # But this addes the option to have a penalty for certain module types
 
             if i_dqn==(MAX_N_MODULES-1): # we are done
                 non_final = torch.tensor(0, dtype=torch.bool)
@@ -274,7 +283,8 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
         n_channels= policy_net.n_channels,
         n_fc_layers=policy_net.n_fc_layers,
         env_vect_size=policy_net.env_vect_size,
-        hidden_layer_size=policy_net.hidden_layer_size).to(device)
+        hidden_layer_size=policy_net.hidden_layer_size,
+        n_conv_layers = policy_net.n_conv_layers).to(device)
 
     target_net = dqn( 
         terrain_in_shape = policy_net.terrain_in_shape ,
@@ -284,7 +294,8 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
         n_channels= policy_net.n_channels,
         n_fc_layers=policy_net.n_fc_layers,
         env_vect_size=policy_net.env_vect_size,
-        hidden_layer_size=policy_net.hidden_layer_size).to(device)
+        hidden_layer_size=policy_net.hidden_layer_size,
+        n_conv_layers = policy_net.n_conv_layers).to(device)
 
 
     optimizer = torch.optim.Adam(policy_net_copy.parameters(),
@@ -296,7 +307,6 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
     target_net.eval()
     opt_ep = 0
     while current_episode.value < max_episode:
-
         i_episode = current_episode.value
 
         if len(replay_memory) >= BATCH_SIZE:
@@ -346,7 +356,8 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
             loss.backward()
             # clamp the gradients
             for param in policy_net_copy.parameters():
-                param.grad.data.clamp_(-1, 1)
+                if param.grad is not None:
+                    param.grad.data.clamp_(-1, 1)
             optimizer.step()
 
             # print('optimized at step ' + str(i_episode))
@@ -369,12 +380,13 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
             if (opt_ep % 10000)==0 and opt_ep>10000:
                 for param_group in optimizer.param_groups:
                     # half the learning rate periodically
-                    param_group['lr'] = param_group['lr']/2.
-                    print( 'LR: ' + str(param_group['lr']) )
+                    if param_group['lr'] >= 1e-6:  # set min learning rate
+                        param_group['lr'] = param_group['lr']/2.
+                        print( 'LR: ' + str(param_group['lr']) )
 
 
             if (opt_ep % SAVE_EP == 0):
-                PATH = os.path.join(cwd, 'policy_net_params.pt')
+                PATH = os.path.join(cwd, 'policy_net_params_par.pt')
                 save_dict = dict()
                 save_dict['policy_net_state_dict'] = policy_net.state_dict()
                 save_dict['terrain_in_shape'] = policy_net.terrain_in_shape
@@ -385,7 +397,9 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
                 save_dict['n_fc_layers']=policy_net.n_fc_layers
                 save_dict['env_vect_size']=policy_net.env_vect_size
                 save_dict['hidden_layer_size']=policy_net.hidden_layer_size
+                save_dict['n_conv_layers'] = policy_net.n_conv_layers
                 save_dict['i_episode'] = i_episode
+                save_dict['module_penalties'] = module_penalties
                 torch.save(save_dict, PATH)
 
         time.sleep(0.01) # keep loop from being too fast
@@ -403,11 +417,10 @@ if __name__== "__main__":
     
     ### Initialize and load policy
     # initiate the policy network 
-    PATH = os.path.join(cwd, 'policy_net_params.pt')
+    PATH = os.path.join(cwd, 'policy_net_params_par.pt')
 
     if RELOAD_WEIGHTS and os.path.exists(PATH):
         save_dict = torch.load(PATH)
-        PATH = os.path.join(cwd, 'policy_net_params.pt')
         save_dict = dict()
 
         policy_net = dqn( 
@@ -418,13 +431,16 @@ if __name__== "__main__":
             n_channels= save_dict['n_channels'],
             n_fc_layers=save_dict['n_fc_layers'],
             env_vect_size=save_dict['env_vect_size'],
-            hidden_layer_size=save_dict['hidden_layer_size'])
+            hidden_layer_size=save_dict['hidden_layer_size'],
+            n_conv_layers = save_dict['n_conv_layers'])
         policy_net.load_state_dict( save_dict['policy_net_state_dict'])
         print('Reloaded weights from ' + PATH)
     else:
         print('Creating ' + PATH)
         policy_net = dqn(terrain_grid_shape, 
-                     max_num_modules = MAX_N_MODULES)
+                     max_num_modules = MAX_N_MODULES,
+                     n_conv_layers = 3,
+                     hidden_layer_size = 150)
 
     # share memory for multiprocess
     policy_net.share_memory()
@@ -453,11 +469,28 @@ if __name__== "__main__":
     processes.append(p)
     time.sleep(0.01)
 
-    # join processes. The main purpose of join() is to ensure that a child process has completed before the main process does anything that depends on the work of the child process.
-    for worker_num in range(len(processes)):
-        p  = processes[worker_num]
-        p.join()
-        time.sleep(0.01)
+    # # join processes. The main purpose of join() is to ensure that a child process has 
+    # completed before the main process does anything that depends on the work of the child process.
+    # for worker_num in range(len(processes)):
+    #     p  = processes[worker_num]
+    #     p.join()
+    #     time.sleep(0.01)
+
+    # watch for when all workers are dead, then end
+    running = True
+    while running:
+        pushers_living = []
+        for p in processes[:-1]:
+            pushers_living.append(p.is_alive())
+        sampler_living = processes[-1].is_alive()
+
+        # end loop if the sampler dies, or all pushers die.
+        if not(sampler_living) or not(np.any(pushers_living))
+            running = False
+        time.sleep(5)
 
     print('Done training')
     # Done training
+
+    import test_selector
+    test_selector.run_test('', 'policy_net_params_par.pt')

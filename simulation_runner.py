@@ -99,7 +99,6 @@ class simulation_runner(object):
                 self.envs.append(env)
 
                 # env.p.resetDebugVisualizerCamera(3,0,-89.999,[3,0,0.2],physicsClientId=env.physicsClient) 
-                env.p.resetDebugVisualizerCamera(2.5,0,-30,[2.5,0,0.2],physicsClientId=env.physicsClient) 
 
                 # env.sim_speed_factor = 2
 
@@ -264,7 +263,8 @@ class simulation_runner(object):
 
 
 
-    def run_sims(self,n_time_steps=150, video_name_addition = ''):
+    def run_sims(self,n_time_steps=150, video_name_addition = '', 
+        debug_params=None):
     # runs simulations and returns how far they went
     #     for 100 time steps
     #         get robot position
@@ -288,7 +288,9 @@ class simulation_runner(object):
                         self.record_video,
                         self.max_xy,
                         video_name_addition,
-                        n_time_steps)
+                        n_time_steps,
+                        self.terrain_randomizer,
+                        debug_params)
 
 
         elif self.reward_function == 'Recorded Simulation':
@@ -324,16 +326,22 @@ class simulation_runner(object):
 
 
 def simulate_robot( envs, modules, record_video, max_xy, 
-    video_name_addition, n_time_steps=150):
+    video_name_addition, n_time_steps=150, 
+    terrain_randomizer=None, debug_params = None):
     # NOTE: assumes that all envs have the same robot loaded
     num_envs = len(envs)
-
     
     module_action_len= list(np.diff(envs[0].action_indexes))
     attachments = envs[0].attachments
     n_modules = len(envs[0].modules_types)
     pos_queues = [deque(maxlen=20)]*num_envs
     reward = torch.zeros(num_envs, dtype=torch.float32)
+
+    # get initial debug parameters
+    initial_debug_params = []
+    if debug_params is not None:
+        for param in debug_params:
+            initial_debug_params.append(envs[0].p.readUserDebugParameter(param))
 
     for env in envs:
         # subtract out initial x, in case its not exactly zero
@@ -366,12 +374,19 @@ def simulate_robot( envs, modules, record_video, max_xy,
             # desired_xyyaw[2] = -2.5*chassis_yaw
             # desired_xyyaw[2] = np.clip(desired_xyyaw[2], -1.5,1.5)
 
-
             env_state_i = env.get_state()
             env_states.append(env_state_i)
 
             goals_world.append( torch.tensor(desired_xyyaw, 
                     dtype=torch.float32, device=device))
+
+        # check if debug params have changed
+        if debug_params is not None:
+            # for i_param in range(len(debug_params)):
+            param_now = env.p.readUserDebugParameter(debug_params[0])
+            if not(param_now == initial_debug_params[0]) and terrain_randomizer is not None:
+                terrain_randomizer.set_block_heights([envs[0].p],param_now)
+                initial_debug_params[0] = param_now
 
         # stack up and pass to gnn in batch
         goals_world = torch.stack(goals_world)
@@ -407,13 +422,8 @@ def simulate_robot( envs, modules, record_video, max_xy,
                     robot_alive[i_env] = False
 
                 # check if out of obstacle course
-                # if (np.abs(env.pos_xyz[0])>max_xy[0] or 
-                #     np.abs(env.pos_xyz[1])>max_xy[1]):
-                #     break
-
                 if np.abs(env.pos_xyz[1])>max_xy[1]:
                     robot_alive[i_env] = False
-
 
                 # check if stuck
                 pos_queue.append(
@@ -427,7 +437,6 @@ def simulate_robot( envs, modules, record_video, max_xy,
     for i_env in range(num_envs):
         env = envs[i_env]
         reward[i_env] += env.pos_xyz[0]
-
 
         if env.show_GUI and (logID is not None):
             env.p.stopStateLogging(logID)

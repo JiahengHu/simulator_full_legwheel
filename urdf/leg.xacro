@@ -26,7 +26,7 @@
     </inertial>
     <visual>
       <geometry>
-        <sphere radius="0.025"/>
+        <sphere radius="0.02"/>
       </geometry>
             <origin xyz="0 0 -.02" rpy="0 0 0"/>
 
@@ -34,17 +34,13 @@
     </visual>
   <collision>
         <geometry>
-          <sphere radius="0.025"/>
+          <sphere radius="0.02"/>
         </geometry>
                   <origin xyz="0 0 -.02" rpy="0 0 0"/>
 
   </collision>
   </link>
 
-<!-- 
-  <xacro:null_end_effector name="leg_${num}/J3_elbow"/>
-
--->
   <!-- use rubber bit for foot end link; necessary to provide output for HEBI components to attach to. -->
 
 

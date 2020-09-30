@@ -51,9 +51,9 @@
   <!-- <xacro:include filename="end_effector.xacro"/> -->
 
   <!-- This automatically loads the gazebo plugin for xacro models
-       which include hebi.xacro -->
+       which include hebi.xacro 
   <gazebo>
     <plugin name="hebi_gazebo_plugin" filename="libhebi_gazebo_plugin.so"/>
-  </gazebo>
+  </gazebo>-->
 
 </robot>
