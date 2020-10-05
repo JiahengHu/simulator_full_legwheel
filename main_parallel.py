@@ -65,7 +65,7 @@ NUM_EPISODES = 20000
 TARGET_UPDATE = 100 # how many episodes to delay target net from policy net
 BATCH_SIZE = 100 # number of samples in a batch for dqn learning
 BOLTZMANN_TEMP_START = 10 
-BOLTZMANN_TEMP_MIN = 1
+BOLTZMANN_TEMP_MIN = 2
 BOLTZMANN_TEMP_DECAY_CONST = 1./4000 # T = T0*exp(-c*episode) e.g. 10*np.exp(-np.array([0, 1000, 5000])/1000)
 # RELOAD_WEIGHTS=True # if true, looks for policy_net_weights.pt to load in
 RELOAD_WEIGHTS=False # if true, looks for policy_net_weights.pt to load in
@@ -380,7 +380,7 @@ def sampler_worker(policy_net,replay_memory, device,current_episode, max_episode
             if (opt_ep % 10000)==0 and opt_ep>10000:
                 for param_group in optimizer.param_groups:
                     # half the learning rate periodically
-                    if param_group['lr'] >= 1e-6:  # set min learning rate
+                    if param_group['lr'] >= 2e-6:  # set min learning rate
                         param_group['lr'] = param_group['lr']/2.
                         print( 'LR: ' + str(param_group['lr']) )
 
@@ -411,8 +411,8 @@ if __name__== "__main__":
 
 
     # device = torch.device('cpu')
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
     
     ### Initialize and load policy
@@ -439,7 +439,7 @@ if __name__== "__main__":
         print('Creating ' + PATH)
         policy_net = dqn(terrain_grid_shape, 
                      max_num_modules = MAX_N_MODULES,
-                     n_conv_layers = 3,
+                     n_conv_layers = 2,
                      hidden_layer_size = 150)
 
     # share memory for multiprocess
@@ -485,7 +485,7 @@ if __name__== "__main__":
         sampler_living = processes[-1].is_alive()
 
         # end loop if the sampler dies, or all pushers die.
-        if not(sampler_living) or not(np.any(pushers_living))
+        if not(sampler_living) or not(np.any(pushers_living)):
             running = False
         time.sleep(5)
 

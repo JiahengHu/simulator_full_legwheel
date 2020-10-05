@@ -30,16 +30,16 @@ class dqn(nn.Module):
         self.conv_out_size = terrain_in_shape[2]*terrain_in_shape[1]*n_channels
         self.conv_layers = nn.ModuleList()
 
-        self.conv_layers.append(torch.nn.Conv2d(terrain_in_shape[0], n_channels, 
-            kernel_size=kernel_size, stride=1, padding=kernel_size//2) )
-        for i in range(self.n_conv_layers):
-            self.conv_layers.append(torch.nn.Conv2d(n_channels, n_channels, 
-                kernel_size=kernel_size, stride=1, padding=kernel_size//2) )
+        # self.conv_layers.append(torch.nn.Conv2d(terrain_in_shape[0], n_channels, 
+        #     kernel_size=kernel_size, stride=1, padding=kernel_size//2) )
+        # for i in range(self.n_conv_layers):
+        #     self.conv_layers.append(torch.nn.Conv2d(n_channels, n_channels, 
+        #         kernel_size=kernel_size, stride=1, padding=kernel_size//2) )
 
-        # self.conv1 = torch.nn.Conv2d(terrain_in_shape[0], n_channels, 
-        #     kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
-        # self.conv2 = torch.nn.Conv2d(n_channels, n_channels, 
-        #         kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
+        self.conv1 = torch.nn.Conv2d(terrain_in_shape[0], n_channels, 
+            kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
+        self.conv2 = torch.nn.Conv2d(n_channels, n_channels, 
+                kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
 
         self.fc_terrain = nn.Linear(self.conv_out_size, env_vect_size)
 
@@ -59,11 +59,11 @@ class dqn(nn.Module):
 
     def forward(self, designs, terrains):
         x = terrains
-        for i in range(self.n_conv_layers):
-            x = F.relu(self.conv_layers[i](x))
+        # for i in range(self.n_conv_layers):
+        #     x = F.relu(self.conv_layers[i](x))
 
-        # x = F.relu(self.conv1(x))
-        # x = F.relu(self.conv2(x))
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
 
         # print(self.conv_out_size)
         # print(x.shape)

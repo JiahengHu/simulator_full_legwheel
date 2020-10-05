@@ -1,4 +1,9 @@
 
+'''
+NOTE this does not work yet
+
+'''
+
 import torch
 from design_assembler import module_types, num_module_types
 from design_assembler import add_module, module_vector_list_to_robot_name
@@ -105,12 +110,17 @@ def run_episode(terrains):
 
 
 if __name__== "__main__":
-    print('INITIALIZING (takes a few seconds)')
     sim_runner = simulation_runner(1, show_GUI= True)
 
     start_sim_button = sim_runner.envs[0].p.addUserDebugParameter(
                         paramName = 'Start sim',
                         rangeMin = 0, rangeMax= -1,startValue =0)
+
+    update_robot_button = sim_runner.envs[0].p.addUserDebugParameter(
+                        paramName = 'Update robot',
+                        rangeMin = 0, rangeMax= -1,startValue =0)
+    update_robot_button_val = 0
+
 
     randomize_terrain_button = sim_runner.envs[0].p.addUserDebugParameter(
                         paramName = 'Randomize Terrain',
@@ -122,14 +132,14 @@ if __name__== "__main__":
                             paramName = 'Terrain max height',
                             rangeMin = 0, rangeMax= 0.08,startValue =0)
 
-    starting_density = 0.6
+
     density_slider_ID = sim_runner.envs[0].p.addUserDebugParameter(
                             paramName = 'Terrain sparsity',
-                            rangeMin = 0.4, rangeMax= 0.9,startValue =starting_density)
+                            rangeMin = 0.4, rangeMax= 0.9,startValue =0.5)
 
 
     terrain = sim_runner.randomize_terrains(terrain_block_height=0.005,
-        terrain_block_distance=starting_density)
+        terrain_block_distance=0.5)
     xyyaw = [0,0,0]
 
 
@@ -145,6 +155,7 @@ if __name__== "__main__":
     xyyaw = [sim_runner.envs[0].pos_xyz[0],
                 sim_runner.envs[0].pos_xyz[1],
                 sim_runner.envs[0].pos_rpy[2]]
+    overhead_text = None
 
     # wait for button started press to start sim
     started = False
@@ -154,12 +165,12 @@ if __name__== "__main__":
             started = True
 
     while True:
-        param_out = sim_runner.step_simulation(debug_params= [height_slider_ID])
-
+        param_out = sim_runner.step_simulation(debug_params= [height_slider_ID],
+            overhead_text = overhead_text)
         xyyaw = [sim_runner.envs[0].pos_xyz[0],
                     sim_runner.envs[0].pos_xyz[1],
                     sim_runner.envs[0].pos_rpy[2]]
-
+        update_button_read = sim_runner.envs[0].p.readUserDebugParameter(update_robot_button)
         terrain_button_read = sim_runner.envs[0].p.readUserDebugParameter(randomize_terrain_button)
         if not(terrain_button_val==terrain_button_read):
             print('Reset terrain button press number ' + str(terrain_button_read))
@@ -179,7 +190,6 @@ if __name__== "__main__":
             xyyaw = [0,0,0]
             sim_runner.load_robots(robot_now, 
                 randomize_xyyaw=False, start_xyyaw = xyyaw)
-            # param_out = sim_runner.step_simulation(debug_params= [height_slider_ID])
 
         if param_out is not None:
             terrain_new = terrain.clone()
@@ -189,9 +199,16 @@ if __name__== "__main__":
             robot_new = robot_names_list[0]
 
             if not(robot_new == robot_now):
-                robot_now = robot_new
-                sim_runner.load_robots(robot_now, 
-                    randomize_xyyaw=False, start_xyyaw = xyyaw)
+                overhead_text = 'A better robot is available'
+
+                if not(update_robot_button_val==update_button_read):
+                    update_robot_button_val = update_button_read
+                    robot_now = robot_new
+                    sim_runner.load_robots(robot_now, 
+                        randomize_xyyaw=False, start_xyyaw = xyyaw)
+            else:
+                update_robot_button_val = update_button_read
+                overhead_text = ''
 
         if xyyaw[0]>9:
             env_state = sim_runner.envs[0].get_state()

@@ -206,7 +206,7 @@ class TerrainRandomizer():
   def __init__(
       self):
     self.block_IDs = []
-    self.block_height_addition = 1 # add to block height belowground
+    self.block_height_addition = 0.5 # add to block height belowground
     
     """Initializes the randomizer.
 
@@ -355,3 +355,13 @@ class TerrainRandomizer():
             bodyUniqueId = block_ID,
             posObj=[shifted_center[0], shifted_center[1], self.half_height_list[ib]+new_height-self.block_height_addition],
             ornObj = pybullet_client.getQuaternionFromEuler([0,0,0]))
+
+
+        # # Alter color also (slows it down a lot more)
+        # block_color = 1 - np.interp(2*(self.half_height_list[ib]+new_height),
+        #        [ _MIN_BLOCK_HEIGHT, self._MAX_BLOCK_HEIGHT_FOR_COLOR], [0,1]) # scales 0-1 for block color
+        # pybullet_client.changeVisualShape(
+        #     objectUniqueId = block_ID,
+        #     linkIndex = -1,
+        #     rgbaColor = [block_color, block_color, block_color, 1])
+

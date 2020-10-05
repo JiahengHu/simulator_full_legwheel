@@ -10,7 +10,8 @@ batches in the policy, to get an expectation of reward for the robot.
 
 # load libraries
 import torch
-from robot_env import robot_env
+# from robot_env import robot_env
+from robot_env_preload import robot_env
 import numpy as np
 import pgnn_control as pgnnc
 from utils import to_tensors, combine_state, wrap_to_pi, rotate, create_control_inputs
@@ -252,7 +253,12 @@ class simulation_runner(object):
 
                 env = self.envs[i_env]
                 env.reset_robot(urdf_name=urdf_name, 
-                    randomize_xyyaw=randomize_xyyaw, start_xyyaw=start_xyyaw)
+                    randomize_xyyaw=randomize_xyyaw, start_xyyaw=start_xyyaw,
+                    preserve_states=True)
+
+                # env.reset_robot(urdf_name=urdf_name, 
+                #     randomize_xyyaw=randomize_xyyaw, start_xyyaw=start_xyyaw)
+
                 # add a small amount of noise onto the robot start pose
 
             modules_types = env.modules_types
@@ -382,7 +388,8 @@ class simulation_runner(object):
         return reward
 
 
-    def step_simulation(self, debug_params = None, robot_alive=[True]):
+    def step_simulation(self, debug_params = None, robot_alive=[True],
+        overhead_text = None):
 
         terrain_randomizer = self.terrain_randomizer
         module_action_len = self.module_action_len
@@ -392,6 +399,8 @@ class simulation_runner(object):
         envs = self.envs
         num_envs = len(envs)
         modules =self.modules
+
+        envs[0].set_overhead_text(overhead_text)
 
         # get initial debug parameters
         initial_debug_params = []
@@ -411,8 +420,9 @@ class simulation_runner(object):
             desired_xyyaw[0] = 1.5
             desired_xyyaw[1] = -1.5*chassis_y
             desired_xyyaw[1] = np.clip(desired_xyyaw[1], -1.5,1.5)
-            # desired_xyyaw[2] = -2.5*chassis_yaw
-            # desired_xyyaw[2] = np.clip(desired_xyyaw[2], -1.5,1.5)
+            
+            desired_xyyaw[2] = -1*chassis_yaw
+            desired_xyyaw[2] = np.clip(desired_xyyaw[2], -1.5,1.5)
 
             env_state_i = env.get_state()
             env_states.append(env_state_i)

@@ -345,6 +345,7 @@ if __name__== "__main__":
 
     folder = '09282020_mamba/'
     folder = '09282020_viper/'
+    folder = '10012020_viper/'
     fname = 'policy_net_params_par.pt'
     run_test(folder,fname)
 

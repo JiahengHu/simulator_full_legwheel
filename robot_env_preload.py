@@ -1,3 +1,8 @@
+'''
+This version pre-loads some urdfs so that the graphics assests
+can be swapped in faster
+'''
+
 
 import numpy as np
 import torch
@@ -10,6 +15,20 @@ import os
 import time
 
 pi = np.pi
+
+preload_names = ['llllll', 'wnwwnw', 'llwwll', 'lnwwnl',
+                 'lnllnl', 'lwllwl', 'lwwwwl', 'wlwwlw', 
+               'wwllww', 'wwwwww', 'wnllnw', 'wllllw']
+# preload_names = ['llllll', 'wnwwnw', 'llwwll', 'lnwwnl']
+
+
+n_preload= len(preload_names)
+preload_start_pos = np.zeros([n_preload, 3])
+preload_start_pos[:,1] =  np.linspace(-n_preload/2., n_preload/2., n_preload)
+# preload_start_pos[:,2] = 1
+preload_start_pos[:,2] = -3 # hide under the plane
+preload_start_pos[:,0] = 0
+preload_start_orn = np.zeros([n_preload, 3])
 
 # utilities
 cwd = os.path.dirname(os.path.realpath(__file__))
@@ -72,12 +91,61 @@ class robot_env:
         p.setTimeStep(self.time_step, physicsClientId=self.physicsClient)
         self.loaded_urdf = None
         self.robotID = None
+
+        self.preload_robotIDs = []
+        for i in range(n_preload):
+            urdf_name = preload_names[i]
+            startOrientation = p.getQuaternionFromEuler(preload_start_orn[i,:]) 
+            startPosition = preload_start_pos[i,:]
+            robotID = p.loadURDF(
+                        os.path.join(cwd, 'urdf', urdf_name + '.urdf'),
+                           basePosition=startPosition, baseOrientation=startOrientation,
+                           flags= (p.URDF_MAINTAIN_LINK_ORDER 
+                            | p.URDF_USE_SELF_COLLISION
+                            | p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
+                            | p.URDF_ENABLE_SLEEPING),
+                           physicsClientId=self.physicsClient)
+            p.changeDynamics(robotID, -1, activationState=p.ACTIVATION_STATE_DISABLE_WAKEUP)
+            p.changeDynamics(robotID, -1, activationState=p.ACTIVATION_STATE_SLEEP)
+            self.preload_robotIDs.append(robotID)
         
     def remove_robot(self):
         p = self.p
         if self.robotID is not None:    
-            p.removeBody(self.robotID, physicsClientId=self.physicsClient)
+            if self.robotID in self.preload_robotIDs:
+                i = self.preload_robotIDs.index(self.robotID)
+                startOrientation = p.getQuaternionFromEuler(preload_start_orn[i,:]) 
+                startPosition = preload_start_pos[i,:]
+                p.resetBasePositionAndOrientation(
+                    self.robotID,
+                    posObj=startPosition,
+                    ornObj=startOrientation,
+                    physicsClientId=self.physicsClient
+                    )
+                for i in range(self.num_joints):
+                    jind = self.moving_joint_inds[i]
+                    p.resetJointState( bodyUniqueId=self.robotID, 
+                        jointIndex = jind,
+                        targetValue= self.moving_joint_centers[i], 
+                        targetVelocity = 0,
+                        physicsClientId=self.physicsClient )
+
+                # set commands to be zero
+                p.setJointMotorControlArray(
+                    bodyUniqueId=self.robotID, 
+                    jointIndices=self.moving_joint_inds, 
+                    controlMode=p.VELOCITY_CONTROL,
+                    targetVelocities = np.zeros(self.num_joints),
+                    forces = self.moving_joint_max_torques,
+                    physicsClientId=self.physicsClient)
+                p.changeDynamics(self.robotID, -1, activationState=p.ACTIVATION_STATE_DISABLE_WAKEUP)
+                p.changeDynamics(self.robotID, -1, activationState=p.ACTIVATION_STATE_SLEEP)
+
+            else:
+                p.removeBody(self.robotID, physicsClientId=self.physicsClient)
+
         self.loaded_urdf = None
+        self.robotID = None
 
     def reset_debug_items(self):
         p = self.p
@@ -101,7 +169,8 @@ class robot_env:
     # reset robot
     def reset_robot(self, randomize_start=False,
         randomize_xyyaw = False,
-        urdf_name = 'wnwwnw', start_xyyaw = None):
+        urdf_name = 'wnwwnw', start_xyyaw = None,
+        preserve_states = False):
         p = self.p
 
         self.reset_debug_items()
@@ -127,18 +196,21 @@ class robot_env:
 
         if self.robotID is not None and (urdf_name == self.loaded_urdf):
         # reload same robot but need to reset its pose
-            p.resetBaseVelocity(
-                self.robotID,
-                linearVelocity=[0,0,0],
-                angularVelocity=[0,0,0],
-                physicsClientId=self.physicsClient
-                )
+
             p.resetBasePositionAndOrientation(
                 self.robotID,
                 posObj=startPosition,
                 ornObj=startOrientation,
                 physicsClientId=self.physicsClient
                 )
+
+            p.resetBaseVelocity(
+                self.robotID,
+                linearVelocity=[0,0,0],
+                angularVelocity=[0,0,0],
+                physicsClientId=self.physicsClient
+                )
+
 
             for i in range(self.num_joints):
                 jind = self.moving_joint_inds[i]
@@ -153,16 +225,48 @@ class robot_env:
             # remove robot if needed
             if self.loaded_urdf is not None:
                 self.remove_robot()
+            else:
+                # can only preserve states if another robot was loaded before
+                preserve_states = False
+
             self.loaded_urdf = urdf_name
 
-            self.robotID = p.loadURDF(
+
+            # If the robot was preloaded, move it into the scene
+            if self.loaded_urdf in preload_names:
+                i = preload_names.index(self.loaded_urdf)
+                self.robotID = self.preload_robotIDs[i]
+                
+                # where possible, keep the same states in overlapping modules
+                if preserve_states:
+                    startPosition = np.array(self.pos_xyz)
+                    # startPosition[-1] = 0.75 # have to drop it down to prevent ground penetration problems
+                    startOrientation = p.getQuaternionFromEuler(np.array(self.pos_rpy))   
+                    prev_modules_types = self.modules_types
+                    prev_attachments = self.attachments
+                p.resetBasePositionAndOrientation(
+                    self.robotID,
+                    posObj=startPosition,
+                    ornObj=startOrientation,
+                    physicsClientId=self.physicsClient
+                    )
+                p.changeDynamics(self.robotID, -1, activationState=p.ACTIVATION_STATE_WAKE_UP)
+
+
+
+
+            else:
+                # otherwise create it newly
+                self.robotID = p.loadURDF(
                         os.path.join(cwd, 'urdf', urdf_name + '.urdf'),
                            basePosition=startPosition, baseOrientation=startOrientation,
                            flags= (p.URDF_MAINTAIN_LINK_ORDER 
                             | p.URDF_USE_SELF_COLLISION
                             | p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES),
                            physicsClientId=self.physicsClient)
-              #                            | p.URDF_MERGE_FIXED_LINKS
+
+
+
 
 
             # count all joints, including fixed ones
@@ -273,36 +377,162 @@ class robot_env:
             self.joint_index_on_module = joint_index_on_module
             self.action_indexes = action_indexes
 
-        # set to a centered initial joint angle with a little noise
-        # print(len(self.moving_joint_inds))
-        # if randomize_start:
-        #     joint_noise = pi/8
-        # else:
-        joint_noise = 0
-        for i in range(self.num_joints):
-            center = self.moving_joint_centers[i]
-            jind = self.moving_joint_inds[i]
-            p.resetJointState( bodyUniqueId=self.robotID, 
-                jointIndex = jind,
-                targetValue= center + np.random.uniform(-1,1)*joint_noise, 
-                targetVelocity = 0,
-                physicsClientId=self.physicsClient )
 
-        # set commands to be zero
-        p.setJointMotorControlArray(
-            bodyUniqueId=self.robotID, 
-            jointIndices=self.moving_joint_inds, 
-            controlMode=p.VELOCITY_CONTROL,
-            targetVelocities = np.zeros(self.num_joints),
-            forces = self.moving_joint_max_torques,
-            physicsClientId=self.physicsClient)
 
-        # steps to take with no control input before starting up
-        # This drops to robot down to a physically possible resting starting position
-        for i in range(100):
+
+        # where possible, keep the same states in overlapping modules
+        if preserve_states:
+            limb_types_now = []
+            limb_types_prev = []
+            old_state_list = []
+            for ia in range(len(self.attachments[0])):
+                a_now = self.attachments[0][ia]
+                if a_now is not None:
+                    mtype_now = self.modules_types[a_now]
+                else:
+                    mtype_now = None
+                limb_types_now.append(mtype_now)
+                a_prev = prev_attachments[0][ia]
+                if a_prev is not None:
+                    mtype_prev = prev_modules_types[a_prev]
+                    state_part = self.full_state[a_prev]
+                else:
+                    mtype_prev = None
+                    state_part = None
+                limb_types_prev.append(mtype_prev)
+                if mtype_now == mtype_prev:
+                    old_state_list.append(state_part)
+                else:
+                    old_state_list.append(None)
+            state_overlap = [None]
+            for ia in range(len(self.attachments[0])):
+                a_now = self.attachments[0][ia]
+                if a_now is not None:
+                    state_overlap.append(old_state_list[ia])
+            # print('state_overlap:')
+            # print(state_overlap)
+            # desired outcome: a list of module states from the previous full_state, of form
+            # [chassis state] [old_limb_state or None], [old_limb_state or None]
+            # where None shows up if the limb types do not overlap
+            current_joint = 0
+            for i in range(len(self.modules_types)):
+                state = state_overlap[i]
+                if self.modules_types[i]==1: # get joint angles on legs 
+                    for leg_j in range(3):
+                        if state is not None:
+                            theta = state[2*leg_j]
+                            dtheta = state[2*leg_j+1]
+                        else:
+                            theta = self.moving_joint_centers[current_joint]
+                            dtheta = 0
+                        p.resetJointState(self.robotID, 
+                            self.moving_joint_inds[current_joint],
+                            theta, dtheta)#, self.physicsClient)
+                        current_joint+=1
+
+                elif self.modules_types[i]==2: # wheel module
+                    # first joint on wheel is a revolute
+                    if state is not None:
+                        theta1 = state[0]
+                        dtheta1 = state[1]
+                    else:
+                        theta1 = self.moving_joint_centers[current_joint]
+                        dtheta1 = 0
+                    p.resetJointState(self.robotID, 
+                            self.moving_joint_inds[current_joint],
+                            theta1, dtheta1)#, self.physicsClient)
+                    current_joint+=1
+                    # second joint is continuous
+                    # wheel only reports is speed, since its position doesnt matter
+                    p.resetJointState(self.robotID, 
+                            self.moving_joint_inds[current_joint],
+                            0, 0)#, self.physicsClient)
+                    current_joint+=1
+
+
+            # still in preserve_states mode, step once, then compute contacts, and move robot  
             p.stepSimulation(physicsClientId=self.physicsClient)
-            # if self.show_GUI:
-            #     time.sleep(self.time_step/self.sim_speed_factor)
+            contact_points = p.getContactPoints(bodyA=self.robotID, 
+                                               physicsClientId=self.physicsClient)
+            # closest_points = p.getClosestPoints(bodyA=self.robotID, 
+            #                         distance=1, # If the distance between objects exceeds this maximum distance, no points may be returned.
+            #                                    physicsClientId=self.physicsClient)
+               # find minimum position 
+            z_add = 0
+            aabb_str = ''
+            for contact in contact_points:
+                bodyUniqueIdA, bodyUniqueIdB = contact[1], contact[2]
+                linkIndexA, linkIndexB = contact[3], contact[4]
+                # contactDistance = contact[8] # contact distance, positive for separation, negative for penetration
+                # positionOnB = contact[6] # contact position on B, in Cartesian world coordinates
+                # bodyA should be the robot, bodyB will either be robot our ground or obstacles
+                # ignore self-collisions
+                if not(bodyUniqueIdA == bodyUniqueIdB):
+                    # print(contactDistance)
+                    # if (-contactDistance > z_add):
+                    #     z_add = -contactDistance
+                    aabbMinA, aabbMaxA = p.getAABB(self.robotID, linkIndexA)
+                    aabbMinB, aabbMaxB = p.getAABB(bodyUniqueIdB, linkIndexB)
+                    # print('aabbMinA: ' + str(aabbMinA) +  ' aabbMaxB: ' + str(aabbMaxB)) 
+                    z_add_possible = aabbMaxB[2] - aabbMinA[2]
+                    if z_add_possible>z_add:
+                        z_add = z_add_possible
+                        aabb_str= 'aabbMinA: ' + str(aabbMinA) +  ' aabbMaxB: ' + str(aabbMaxB)
+                        
+                        # assume that the contact penetration can be solved by moving robot up
+            if z_add > 1e-3:
+                # print(aabb_str)
+                # print('Z add: ' +str(z_add))    
+                startPosition = np.array(self.pos_xyz)
+                startPosition[-1] += z_add + 0.01 # the 1cm buffer seems needed to prevent edge cases
+                # where the feet/wheels might penetrate the ground
+                p.resetBasePositionAndOrientation(
+                    self.robotID,
+                    posObj=startPosition,
+                    ornObj=startOrientation,
+                    physicsClientId=self.physicsClient
+                    )
+
+
+
+
+
+
+        if not preserve_states:
+
+
+            # set to a centered initial joint angle with a little noise
+            # print(len(self.moving_joint_inds))
+            # if randomize_start:
+            #     joint_noise = pi/8
+            # else:
+            joint_noise = 0
+            for i in range(self.num_joints):
+                center = self.moving_joint_centers[i]
+                jind = self.moving_joint_inds[i]
+                p.resetJointState( bodyUniqueId=self.robotID, 
+                    jointIndex = jind,
+                    targetValue= center + np.random.uniform(-1,1)*joint_noise, 
+                    targetVelocity = 0,
+                    physicsClientId=self.physicsClient )
+
+
+            # set commands to be zero
+            p.setJointMotorControlArray(
+                bodyUniqueId=self.robotID, 
+                jointIndices=self.moving_joint_inds, 
+                controlMode=p.VELOCITY_CONTROL,
+                targetVelocities = np.zeros(self.num_joints),
+                forces = self.moving_joint_max_torques,
+                physicsClientId=self.physicsClient)
+
+
+            # steps to take with no control input before starting up
+            # This drops to robot down to a physically possible resting starting position
+            for i in range(100):
+                p.stepSimulation(physicsClientId=self.physicsClient)
+                # if self.show_GUI:
+                #     time.sleep(self.time_step/self.sim_speed_factor)
 
         # # set joints to random small velocities after its dropped to the ground
         # if randomize_start:
