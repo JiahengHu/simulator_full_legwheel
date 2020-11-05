@@ -21,7 +21,7 @@
       <!--mass value="2.7"/no battery-->
       <mass value="3.4"/><!-- with  1 battery -->
       <inertia ixx="0.02" ixy="0.0" ixz="0.0" iyy="0.02" iyz="0.0" izz="0.05"/>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="-0.02 0 0"/>
     </inertial>
 
     <visual>

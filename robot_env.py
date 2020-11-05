@@ -24,27 +24,16 @@ class robot_env:
             # self.physicsClient = p.connect(p.GUI)# p.DIRECT for non-graphical version
             p = bc.BulletClient(connection_mode=pybullet.GUI)
             self.physicsClient = p._client
-
-
-                    # p.resetDebugVisualizerCamera(2.75,0,-30,[3.2,0,0.2],physicsClientId=self.physicsClient) 
-            p.resetDebugVisualizerCamera(2,0,-30,[1,0,0.2],physicsClientId=self.physicsClient) 
-            
-            p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW,0,physicsClientId=self.physicsClient)
-            p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW,0,physicsClientId=self.physicsClient)
-            p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW,0,physicsClientId=self.physicsClient)
-            p.configureDebugVisualizer(p.COV_ENABLE_GUI,0,physicsClientId=self.physicsClient)
-
         else:
             # initialize physics engine when environment is made    
             # self.physicsClient = p.connect(p.DIRECT)# p.DIRECT for non-graphical version
             p = bc.BulletClient(connection_mode=pybullet.DIRECT)
             self.physicsClient = p._client
 
-
-        self.follow_with_camera = False # follow the robot with camera
-
+        p.resetDebugVisualizerCamera(2,0,-25,[0,0,0],physicsClientId=self.physicsClient) # I like this view
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI,0,physicsClientId=self.physicsClient)
         # turn off shadows
-        # p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS,0,physicsClientId=self.physicsClient)
+        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS,0,physicsClientId=self.physicsClient)
         
         self.time_step = 1./240. # default 1/240 ~= 0.004
         self.n_time_steps_per_step = 20 # 20/240 = 0.08
@@ -53,7 +42,10 @@ class robot_env:
         self.sim_speed_factor = 1
         self.p = p
         self.loaded_urdf = None
-        self.overhead_text = None
+        self.follow_with_camera = False # follow the robot with camera
+
+        self.foot_friction = 1.0
+        self.wheel_friction = [0.8,0.8,1.4]
 
     # reset terrain
     def reset_terrain(self, plane_transparent=False):
@@ -73,6 +65,10 @@ class robot_env:
         self.loaded_urdf = None
         self.robotID = None
         
+        # dyn_info = p.getDynamicsInfo(bodyUniqueId=self.planeId,linkIndex=-1,
+        #             physicsClientId=self.physicsClient)
+        # print('Plane friction: ' + str(dyn_info[1]))
+
     def remove_robot(self):
         p = self.p
         if self.robotID is not None:    
@@ -94,34 +90,28 @@ class robot_env:
 
         self.arrow_ids = []
         self.arrow_data = None
-        self.overhead_text_ID = None
-        self.overhead_text = None
 
 
     # reset robot
-    def reset_robot(self, randomize_start=False,
+    def reset_robot(self, randomize_start=True,
         randomize_xyyaw = False,
         urdf_name = 'wnwwnw', start_xyyaw = None):
         p = self.p
 
         self.reset_debug_items()
+
         startPosition=[0,0,0.3] # high enough that nothing touches the ground
         startOrientationRPY = [0,0,0]
+        if randomize_xyyaw:
+            startPosition[0]+= (np.random.rand()*2-1)*0.05
+            startPosition[1]+= (np.random.rand()*2-1)*0.05
+            startOrientationRPY[2] += (np.random.rand()*2-1)*pi/8
 
         # allow for starting yaw to be overridden by user
         if start_xyyaw is not None: 
-            startOrientationRPY[2] = start_xyyaw[2]
             startPosition[0] = start_xyyaw[0]
             startPosition[1] = start_xyyaw[1]
-
-
-
-        if randomize_xyyaw:
-            startPosition[0]+= (np.random.rand()*2-1)*0.02
-            startPosition[1]+= (np.random.rand()*2-1)*0.02
-            startOrientationRPY[2] += (np.random.rand()*2-1)*0.02
-
-
+            startOrientationRPY[2] = start_xyyaw[2]
 
         startOrientation = p.getQuaternionFromEuler(startOrientationRPY)   
 
@@ -162,8 +152,7 @@ class robot_env:
                             | p.URDF_USE_SELF_COLLISION
                             | p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES),
                            physicsClientId=self.physicsClient)
-              #                            | p.URDF_MERGE_FIXED_LINKS
-
+              # 
 
             # count all joints, including fixed ones
             num_joints_total = p.getNumJoints(self.robotID,
@@ -180,6 +169,7 @@ class robot_env:
             self.moving_joint_centers = []
             self.moving_joint_max_torques = []
             self.moving_joint_max_velocities = []
+            self.foot_wheel_link_inds = []
 
             for j_ind in range(num_joints_total):
                 j_info = p.getJointInfo(self.robotID, 
@@ -201,22 +191,34 @@ class robot_env:
                 link_name = str(j_info[12])
                 self.link_names.append(link_name)
 
+
                 # raise friction value for feet
                 if link_name.find('foot/INPUT')>=0:
                     p.changeDynamics(bodyUniqueId=self.robotID, 
-                                    linkIndex=j_ind, lateralFriction=0.9, 
+                                    linkIndex=j_ind, lateralFriction=self.foot_friction, 
                                     physicsClientId=self.physicsClient)
+                    self.foot_wheel_link_inds.append(j_ind)
                 # raise friction value for wheel
                 elif link_name.find('wheel/INPUT')>=0:
                     p.changeDynamics(bodyUniqueId=self.robotID, 
-                                    linkIndex=j_ind, lateralFriction=0.8, 
+                                    linkIndex=j_ind, lateralFriction=1.0, 
+                                    anisotropicFriction=self.wheel_friction,
+                                    physicsClientId=self.physicsClient)
+                    self.foot_wheel_link_inds.append(j_ind)
+                # raise friction for chassis, in case wheels or ground rub into it
+                elif link_name.find('chassis')>=0:
+                    p.changeDynamics(bodyUniqueId=self.robotID, 
+                                    linkIndex=j_ind, lateralFriction=1.2, 
                                     physicsClientId=self.physicsClient)
 
             # throttle torque max and vel
             # this is needed since the "max" vel listed is the unloaded max,
             # and "max" torque is the instantaneous and not continuous max
-            self.moving_joint_max_torques    = np.array(self.moving_joint_max_torques)*0.6
-            self.moving_joint_max_velocities = np.array(self.moving_joint_max_velocities)*0.6
+            # self.moving_joint_max_torques    = np.array(self.moving_joint_max_torques)*0.6
+            # self.moving_joint_max_velocities = np.array(self.moving_joint_max_velocities)*0.6
+            self.moving_joint_max_torques    = np.array(self.moving_joint_max_torques)*0.8
+            self.moving_joint_max_velocities = np.array(self.moving_joint_max_velocities)
+
 
             self.num_joints = len(self.moving_joint_inds)
             self.num_links = len(self.link_names) # does not include the root link
@@ -275,10 +277,10 @@ class robot_env:
 
         # set to a centered initial joint angle with a little noise
         # print(len(self.moving_joint_inds))
-        # if randomize_start:
-        #     joint_noise = pi/8
-        # else:
-        joint_noise = 0
+        if randomize_start:
+            joint_noise = pi/8
+        else:
+            joint_noise = 0
         for i in range(self.num_joints):
             center = self.moving_joint_centers[i]
             jind = self.moving_joint_inds[i]
@@ -304,25 +306,24 @@ class robot_env:
             # if self.show_GUI:
             #     time.sleep(self.time_step/self.sim_speed_factor)
 
-        # # set joints to random small velocities after its dropped to the ground
-        # if randomize_start:
-        #     joint_noise = 0.1
-        #     joint_states = p.getJointStates(self.robotID,
-        #                         self.moving_joint_inds,
-        #                         physicsClientId=self.physicsClient)
-        #     for i in range(self.num_joints):
-        #         theta = joint_states[i][0]
-        #         jind = self.moving_joint_inds[i]
-        #         max_vel = self.moving_joint_max_velocities[i]
-        #         p.resetJointState( bodyUniqueId=self.robotID, 
-        #             jointIndex = jind,
-        #             targetValue= theta, 
-        #             targetVelocity = np.random.uniform(-1,1)*joint_noise*max_vel,
-        #             physicsClientId=self.physicsClient )
+        # set joints to random small velocities after its dropped to the ground
+        if randomize_start:
+            joint_noise = 0.1
+            joint_states = p.getJointStates(self.robotID,
+                                self.moving_joint_inds,
+                                physicsClientId=self.physicsClient)
+            for i in range(self.num_joints):
+                theta = joint_states[i][0]
+                jind = self.moving_joint_inds[i]
+                max_vel = self.moving_joint_max_velocities[i]
+                p.resetJointState( bodyUniqueId=self.robotID, 
+                    jointIndex = jind,
+                    targetValue= theta, 
+                    targetVelocity = np.random.uniform(-1,1)*joint_noise*max_vel,
+                    physicsClientId=self.physicsClient )
 
 
         self.update_state()
-
 
         # only need to get measurement stds once at reset
         self.measurement_stds = self.get_measurement_stds()
@@ -392,6 +393,11 @@ class robot_env:
                                         self.moving_joint_inds,
                                         physicsClientId=self.physicsClient)
 
+
+        # joint_states = [p.getJointState(self.robotID,
+        #                                 ii,
+        #                                 physicsClientId=self.physicsClient)
+        #                 for ii in self.moving_joint_inds]
         module_state_list = []
 
         # go through the modules and get the appropriate sensor data for each one
@@ -542,21 +548,19 @@ class robot_env:
                     linkWorldPosition, linkWorldOrientationQuat = p.getBasePositionAndOrientation(
                         bodyUniqueId=self.robotID,physicsClientId=self.physicsClient)
                     self.pos_xyz = linkWorldPosition
-                    # self.draw_body_arrows()
+                    self.draw_body_arrows()
 
-                if self.follow_with_camera:
+                if self.follow_with_camera and self.show_GUI:
                     linkWorldPosition, linkWorldOrientationQuat = p.getBasePositionAndOrientation(
                         bodyUniqueId=self.robotID,physicsClientId=self.physicsClient)
                     self.pos_xyz = linkWorldPosition
-                    p.resetDebugVisualizerCamera(2,0,-30,[1+self.pos_xyz[0],self.pos_xyz[1],0.2],
+                    # p.resetDebugVisualizerCamera(2,0,-30,[1+self.pos_xyz[0],self.pos_xyz[1],0.2],
+                    p.resetDebugVisualizerCamera(1.5,0,-30,[self.pos_xyz[0],self.pos_xyz[1],0.2],
                     physicsClientId=self.physicsClient) 
-
-                self.update_overhead_text_pos()
 
                 time.sleep(self.time_step/self.sim_speed_factor)
 
         self.update_state()
-
 
     # sets position control commands for a timestep
     def step_pos_control(self, pos):
@@ -698,37 +702,47 @@ class robot_env:
             if self.modules_types[i]==0: # chassis
                 measurement_stds.append(
                     torch.tensor([0, 0, 1e-04, # xyz
-                        1e-04, 1e-04, 1e-04, # rpy
+                        2e-03, 2e-03, 2e-03, # rpy
                         0,0,0, # vxyz
                         5e-3, 5e-3, 5e-3 # w_xyz
                         ], dtype=torch.float32) )
 
             elif self.modules_types[i]==1: # get joint angles on legs 
                 measurement_stds.append(
-                    torch.tensor([1e-4, 2e-2, 1e-4, 2e-2, 1e-4, 2e-2],
+                    torch.tensor([2e-5, 5e-2, 2e-5, 5e-2, 2e-5, 5e-2],
                       dtype=torch.float32) )
             elif self.modules_types[i]==2: # wheel module
                 measurement_stds.append(
-                    torch.tensor([1e-4, 2e-2, 2e-2],
+                    torch.tensor([2e-5, 5e-2, 5e-2],
                       dtype=torch.float32) )   
+        # for i in range(len(self.modules_types)):
+        #     if self.modules_types[i]==0: # chassis
+        #         measurement_stds.append(
+        #             torch.tensor([0, 0, 1e-04, # xyz
+        #                 2e-02, 2e-02, 2e-02, # rpy
+        #                 0,0,0, # vxyz
+        #                 5e-2, 5e-2, 5e-2 # w_xyz
+        #                 ], dtype=torch.float32) )
+
+        #     elif self.modules_types[i]==1: # get joint angles on legs 
+        #         measurement_stds.append(
+        #             torch.tensor([1e-3, 2e-2, 1e-3, 2e-2, 1e-3, 2e-2],
+        #               dtype=torch.float32) )
+        #     elif self.modules_types[i]==2: # wheel module
+        #         measurement_stds.append(
+        #             torch.tensor([1e-3, 2e-2, 1e-1],
+        #               dtype=torch.float32) )   
+
         return measurement_stds
-
-    def set_overhead_text(self, overhead_text):
-        self.overhead_text = overhead_text
-
-    def update_overhead_text_pos(self):
-        if self.overhead_text is not None:
-            if self.overhead_text_ID is None: 
-                pos_xyz = np.array(self.pos_xyz)
-                pos_xyz[-1] = 0.5
-                self.overhead_text_ID = self.p.addUserDebugText(text=self.overhead_text,
-                                textPosition = pos_xyz, textColorRGB = [1,0,0])
-            else:
-                pos_xyz = np.array(self.pos_xyz)
-                pos_xyz[-1] = 0.5
-                self.overhead_text_ID = self.p.addUserDebugText(text=self.overhead_text,
-                                textPosition = pos_xyz, textColorRGB = [1,0,0],
-                                replaceItemUniqueId = self.overhead_text_ID)
+    # example sensor noise 
+# [tensor([0.0000e+00, 0.0000e+00, 1.3288e-05, 6.3331e-05, 5.6818e-04, 2.5309e-02,
+#          0.0000e+00, 0.0000e+00, 0.0000e+00, 2.1432e-03, 2.0409e-03, 1.9623e-03]),
+#  tensor([3.9633e-05, 1.6361e-02, 4.2375e-05, 1.6408e-02, 4.2369e-05, 1.6663e-02]),
+#  tensor([4.1850e-05, 1.6528e-02, 3.7394e-05, 1.4178e-02, 4.4773e-05, 1.7578e-02]),
+#  tensor([3.9314e-05, 1.4942e-02, 4.2634e-05, 1.6680e-02, 4.2178e-05, 1.6600e-02]),
+#  tensor([3.9898e-05, 1.5943e-02, 4.1142e-05, 1.5948e-02, 4.1863e-05, 1.6125e-02]),
+#  tensor([4.6039e-05, 1.7552e-02, 3.5823e-05, 1.4376e-02, 4.7222e-05, 1.8835e-02]),
+#  tensor([3.7567e-05, 1.4525e-02, 3.9617e-05, 1.5166e-02, 4.0091e-05, 1.4704e-02])]
 
     def draw_body_arrows(self, vects=None, lineColors=None):
     # Draws arrow from the body frame and replaces them at each step call
@@ -740,6 +754,8 @@ class robot_env:
 
         if vects is None:
             (vects, lineColors) = self.arrow_data
+
+        
         arrow_yaws = []
         arrow_head_len = []
         for vect in vects:
@@ -814,6 +830,60 @@ class robot_env:
                     physicsClientId=self.physicsClient)
                 self.arrow_ids.append([self.arrow_id0, self.arrow_id1, self.arrow_id2])
 
+    def get_ff_torque_approx(self):
+    # return a rough approximation of the ff torques for legs
+    # uses a list of the points that are all low and within 0.02m of the lowest foot/wheel
+        
+
+        foot_wheel_states = self.p.getLinkStates(self.robotID,
+                        self.foot_wheel_link_inds,
+                        computeForwardKinematics=1,
+                        physicsClientId=self.physicsClient)
+        x_limbs = [s[4][0] for s in foot_wheel_states] # worldLinkFramePosition is in index 4
+        y_limbs = [s[4][1] for s in foot_wheel_states] # worldLinkFramePosition is in index 4
+        z_limbs = [s[4][2] for s in foot_wheel_states] # worldLinkFramePosition is in index 4
+        radius = 0.105
+        foot_diam = 0.04
+        x_limbs = np.array(x_limbs)
+        y_limbs = np.array(y_limbs)
+        z_limbs = np.array(z_limbs)
+        # take the radius distance down from wheels (approximates low point)
+        n_limbs = len(self.modules_types[1:])
+        for i in range(n_limbs):
+            mt = self.modules_types[i+1]
+            if mt == 1:
+                z_limbs[i] = z_limbs[i] - foot_diam
+            elif mt == 2:
+                z_limbs[i] = z_limbs[i] - radius
+        z_limbs[z_limbs<0] = 0
+
+        # print(z_limbs)
+        lowest_ind = np.argmin(z_limbs)
+        lowest_val = z_limbs[lowest_ind]
+        nearby_lowest_inds = np.where( np.abs(z_limbs - lowest_val)<0.02)[0]
+        # print(nearby_lowest_inds)
+        # tau = R x F
+        F = -self.total_mass*9.81 / len(nearby_lowest_inds)
+        R = np.sqrt((x_limbs - self.pos_xyz[0])**2 + (y_limbs - self.pos_xyz[1])**2)
+        
+        RF = R*F
+        tau_approx = np.zeros(n_limbs)*np.nan
+        tau_approx[nearby_lowest_inds] = RF[nearby_lowest_inds]
+        # print(tau_approx)
+
+        tau_out = []
+        for i in range(n_limbs):
+            mt = self.modules_types[i+1]
+            if mt == 1:
+                tau_out.extend([np.nan, tau_approx[i], np.nan])
+            elif mt == 2:
+                tau_out.extend([np.nan, np.nan])
+
+        # print(tau_out)
+        return tau_out
+
+
+
     # get a list of all contact points of the robot with the ground in world frame
     def get_contacts(self):
         # query the simulation for the contact points
@@ -865,15 +935,6 @@ class robot_env:
 
 
 
-    # example sensor noise 
-# [tensor([0.0000e+00, 0.0000e+00, 1.3288e-05, 6.3331e-05, 5.6818e-04, 2.5309e-02,
-#          0.0000e+00, 0.0000e+00, 0.0000e+00, 2.1432e-03, 2.0409e-03, 1.9623e-03]),
-#  tensor([3.9633e-05, 1.6361e-02, 4.2375e-05, 1.6408e-02, 4.2369e-05, 1.6663e-02]),
-#  tensor([4.1850e-05, 1.6528e-02, 3.7394e-05, 1.4178e-02, 4.4773e-05, 1.7578e-02]),
-#  tensor([3.9314e-05, 1.4942e-02, 4.2634e-05, 1.6680e-02, 4.2178e-05, 1.6600e-02]),
-#  tensor([3.9898e-05, 1.5943e-02, 4.1142e-05, 1.5948e-02, 4.1863e-05, 1.6125e-02]),
-#  tensor([4.6039e-05, 1.7552e-02, 3.5823e-05, 1.4376e-02, 4.7222e-05, 1.8835e-02]),
-#  tensor([3.7567e-05, 1.4525e-02, 3.9617e-05, 1.5166e-02, 4.0091e-05, 1.4704e-02])]
 
 
 # list robots

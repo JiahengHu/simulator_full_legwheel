@@ -1,3 +1,0 @@
-raised policy hidden size from 250 to 500
-                    torque_loss_weight = 0.2,
-v2 fixes a small problem with policy torque loss

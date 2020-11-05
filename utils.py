@@ -1,6 +1,10 @@
 import numpy as np
-from scipy import interpolate
 import torch
+
+
+def wrap_to_pi(angle):
+    return torch.remainder(angle + np.pi,  np.pi*2) - np.pi
+
 
 # helper functions to move to and from normalized data
 def to_normalized(tensor_in, tensor_mean, tensor_std ):
@@ -14,19 +18,6 @@ def from_normalized(tensor_in, tensor_mean, tensor_std ):
         return (tensor_in*tensor_std) + tensor_mean 
     else:
         return tensor_in
-
-# Generate random trajectories with splines
-def spline_generator(num_joints, n_steps, n_sample_pts):
-    x = np.linspace(0, n_steps, n_sample_pts) # lower res
-    # y = np.random.uniform(-1,1,(n_sample_pts,num_joints))
-    y = np.random.normal(0,0.5,(n_sample_pts,num_joints))
-    xnew = np.arange(0,n_steps) # higher res
-    ynew = np.zeros((n_steps,num_joints))
-    for i in range(num_joints):
-        tck = interpolate.splrep(x, y[:,i], s=0)
-        ynew[:,i] = interpolate.splev(xnew, tck, der=0)
-    return ynew
-
 
 def rotate(rotmats, vecs):
     return  torch.matmul(rotmats, vecs.unsqueeze(-1)).squeeze(2)
@@ -82,8 +73,6 @@ def to_body_frame_batch(state0, state1):
 
     return fd_input, delta_fd_output
 
-def wrap_to_pi(angle):
-    return torch.remainder(angle + np.pi,  np.pi*2) - np.pi
 
 def from_body_frame_batch(state0, delta_fd):
     chassis_state0 = state0[0]
@@ -99,10 +88,16 @@ def from_body_frame_batch(state0, delta_fd):
     state1_est = [ 
         torch.cat([
         chassis_state0[:,0:3] + rotate(R0,chassis_delta_fd[:,0:3]),
-        wrap_to_pi(chassis_state0[:,3:6] + chassis_delta_fd[:,3:6]),
+        chassis_state0[:,3:6] + chassis_delta_fd[:,3:6], # see note below
         chassis_state0[:,6:9] + rotate(R0, chassis_delta_fd[:,6:9]),
         chassis_state0[:,9:12] + rotate(R0, chassis_delta_fd[:,9:12])],-1)
         ]
+
+        # NOTE previously used 
+                # wrap_to_pi(chassis_state0[:,3:6] + chassis_delta_fd[:,3:6]),
+#  but I notice that when predicting state rollouts it is better if we keep those rollouts 
+# without wrap around yaw. This is so the desired delta and achieved delta can be compared in the cost.
+
 
         # Used to use:
         # torch.asin(torch.sin( chassis_state0[:,3:6] + chassis_delta_fd[:,3:6] )),

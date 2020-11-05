@@ -24,10 +24,13 @@ device = torch.device("cpu")
 np.set_printoptions(precision=2,suppress=True)
 
 terrain_grid_shape = [1,50,20]
+reward_function = 'Simulation'
+# reward_function = 'Recorded Simulation'
+# reward_function = 'Testing Proxy'
 
 class simulation_runner(object):
 
-    def __init__(self, num_envs = 1, show_GUI=False):
+    def __init__(self, num_envs = 1, show_GUI=False, record_video=False):
         self.num_envs = num_envs
         # self.terrain_grid_shape = [1,20,10] # deltax, deltay
         # self.terrain_grid_shape = [1,50,20] # deltax, deltay
@@ -35,9 +38,7 @@ class simulation_runner(object):
         self.robot_name = [] # all envs have the same robot loaded
         self.terrain_grid = []
         self.max_xy = [9,2] # defines size of obstacle course. TODO: get from terrain randomizer.
-        self.reward_function = 'Simulation'
-        # self.reward_function = 'Recorded Simulation'
-        # self.reward_function = 'Testing Proxy'
+
         self.modules_gnn = []
         self.saved_data = None
         self.normal_distribution = torch.distributions.normal.Normal(0, 1)
@@ -46,7 +47,7 @@ class simulation_runner(object):
         self.terrain_randomizer = TerrainRandomizer()
         self.show_GUI = show_GUI # if true, will show first gui. for test only.
         # self.show_GUI = True # if true, will show first gui. for test only.
-        self.record_video= False # if show gui and true, records some videos
+        self.record_video = record_video # if show gui and true, records some videos
         # self.record_video= True # if show gui and true, records some videos
         # obstacle density and size
         # high and large and dense
@@ -71,13 +72,12 @@ class simulation_runner(object):
 
         # create GNN
         # load GNN params
-        if self.reward_function == 'Simulation':
+        if reward_function == 'Simulation':
 
-            PATH = 'mbrl_v4_test17/multidesign_control_iter3.pt'
-            PATH = 'mbrl_v4_test18/multidesign_control_iter3_v4.pt'
-            PATH = 'mbrl_v4_test19/multidesign_control_iter3_v2.pt'
+            PATH = 'mbrl_v6_test10/multidesign_control_iter4.pt'
             PATH = os.path.join(cwd, PATH)
             save_dict = torch.load( PATH, map_location=lambda storage, loc: storage)
+            print('Loaded network ' + PATH)
             goal_len =3
             self.gnn_nodes = pgnnc.create_GNN_nodes(save_dict['internal_state_len'] , 
                                        save_dict['message_len'] , 
@@ -95,14 +95,13 @@ class simulation_runner(object):
                     env = robot_env(show_GUI = self.show_GUI)
                 else:
                     env = robot_env(show_GUI = False)
-                # env.reset_terrain() # todo: remove when randomize is done
+                env.follow_with_camera = True
+                # env.p.resetDebugVisualizerCamera(3,0,-89.999,[3,0,0.2],physicsClientId=env.physicsClient) 
+                # env.sim_speed_factor = 5
+
                 self.envs.append(env)
 
-                # env.p.resetDebugVisualizerCamera(3,0,-89.999,[3,0,0.2],physicsClientId=env.physicsClient) 
-
-                # env.sim_speed_factor = 2
-
-        elif self.reward_function == 'Recorded Simulation':
+        elif reward_function == 'Recorded Simulation':
             # load up rewards to look up
             self.saved_data = torch.load('rewards_processed.pt')
 
@@ -112,13 +111,13 @@ class simulation_runner(object):
     def measure_terrains(self):
         terrain_grid = torch.zeros([1]+self.terrain_grid_shape)
 
-        if self.reward_function == 'Testing Proxy' or self.reward_function == 'Recorded Simulation':
+        if reward_function == 'Testing Proxy' or reward_function == 'Recorded Simulation':
             # for testing:
             if np.random.rand()>0.5:
                 terrain_grid += 0.1 # make terrain entries large sometimes for test
             self.terrain_grid = terrain_grid
 
-        elif self.reward_function == 'Simulation':
+        elif reward_function == 'Simulation':
             # using ray casting to get heights of points
 
             # NOTE: Assumes that the terrains in the envs are all the same.
@@ -153,7 +152,7 @@ class simulation_runner(object):
         # randomize the terrains
 
 
-        if self.reward_function == 'Simulation':
+        if reward_function == 'Simulation':
 
             # pick a random seed for which all the terrains will use,
             # so that they all get the same new terrain
@@ -229,7 +228,7 @@ class simulation_runner(object):
         is_valid = self.check_robot_validity(urdf_name)
         self.is_valid = is_valid
 
-        if is_valid and self.reward_function == 'Simulation':
+        if is_valid and reward_function == 'Simulation':
 
             for i_env in range(self.num_envs):
                 # env = self.envs[i_env]
@@ -242,7 +241,8 @@ class simulation_runner(object):
 
                 env = self.envs[i_env]
                 env.reset_robot(urdf_name=urdf_name, 
-                    randomize_xyyaw=randomize_xyyaw, start_xyyaw=start_xyyaw)
+                    randomize_xyyaw=randomize_xyyaw, 
+                    start_xyyaw=start_xyyaw, randomize_start=False)
                 # add a small amount of noise onto the robot start pose
 
             modules_types = env.modules_types
@@ -263,8 +263,8 @@ class simulation_runner(object):
 
 
 
-    def run_sims(self,n_time_steps=150, video_name_addition = '', 
-        debug_params=None):
+    def run_sims(self,n_time_steps=250, video_name_addition = '', 
+        debug_params=None, allow_early_stop=True):
     # runs simulations and returns how far they went
     #     for 100 time steps
     #         get robot position
@@ -276,7 +276,7 @@ class simulation_runner(object):
         rewards = torch.zeros(self.num_envs, dtype=torch.float32)
 
 
-        if self.reward_function == 'Simulation':
+        if reward_function == 'Simulation':
 
 
             if not(self.is_valid):
@@ -290,10 +290,11 @@ class simulation_runner(object):
                         video_name_addition,
                         n_time_steps,
                         self.terrain_randomizer,
-                        debug_params)
+                        debug_params,
+                        allow_early_stop)
 
 
-        elif self.reward_function == 'Recorded Simulation':
+        elif reward_function == 'Recorded Simulation':
             for i_env in range(self.num_envs):
                 if not(self.is_valid[i_env]):
                     rewards[i_env] -= 10
@@ -303,11 +304,11 @@ class simulation_runner(object):
                     # add artificial noise
                     rewards[i_env] += self.normal_distribution.sample()
 
-        elif self.reward_function == 'Testing Proxy':
+        elif reward_function == 'Testing Proxy':
             # # # ----------- placeholder reward ---------------
             for i_env in range(self.num_envs):
             # alter rewards based on terrain
-                if torch.max(self.terrain_grid[i_env])>0.05:
+                if torch.max(self.terrain_grid)>0.05:
                     w_reward = 1
                     l_reward = 2
                 else:
@@ -326,8 +327,9 @@ class simulation_runner(object):
 
 
 def simulate_robot( envs, modules, record_video, max_xy, 
-    video_name_addition, n_time_steps=150, 
-    terrain_randomizer=None, debug_params = None):
+    video_name_addition, n_time_steps=200, 
+    terrain_randomizer=None, debug_params = None,
+     allow_early_stop = True):
     # NOTE: assumes that all envs have the same robot loaded
     num_envs = len(envs)
     
@@ -351,10 +353,10 @@ def simulate_robot( envs, modules, record_video, max_xy,
             vid_path = os.path.join(cwd, 
                         env.loaded_urdf+ video_name_addition+'.mp4')
 
-            if not os.path.exists(vid_path):
-                logID = env.p.startStateLogging(
-                    env.p.STATE_LOGGING_VIDEO_MP4,
-                    fileName=vid_path)
+            # if not os.path.exists(vid_path):
+            logID = env.p.startStateLogging(
+                env.p.STATE_LOGGING_VIDEO_MP4,
+                fileName=vid_path)
             
     robot_alive = [True]*num_envs
     for step in range(n_time_steps):
@@ -368,11 +370,22 @@ def simulate_robot( envs, modules, record_video, max_xy,
             
             # set direction to head
             desired_xyyaw = np.zeros(3)
-            desired_xyyaw[0] = 1.5
-            desired_xyyaw[1] = -1.5*chassis_y
-            desired_xyyaw[1] = np.clip(desired_xyyaw[1], -1.5,1.5)
+            # desired_xyyaw[0] = 1.5
+            # desired_xyyaw[1] = -1.5*chassis_y
+            # desired_xyyaw[1] = np.clip(desired_xyyaw[1], -1.5,1.5)
             # desired_xyyaw[2] = -2.5*chassis_yaw
             # desired_xyyaw[2] = np.clip(desired_xyyaw[2], -1.5,1.5)
+            T= 20
+            dt = 20./240.
+            speed_scale_xy = (T*dt)*0.314*(1./0.75)
+            speed_scale_yaw = (T*dt)*1.1*(1./0.75)
+
+            desired_xyyaw[0] = speed_scale_xy
+            desired_xyyaw[1] = -speed_scale_xy*chassis_y*4
+            desired_xyyaw[1] = np.clip(desired_xyyaw[1], -speed_scale_xy, speed_scale_xy)
+            # force to turn toward the heading
+            desired_xyyaw[2] = -speed_scale_yaw*chassis_yaw/2
+            desired_xyyaw[2] = np.clip(desired_xyyaw[2], -speed_scale_yaw,speed_scale_yaw)
 
             env_state_i = env.get_state()
             env_states.append(env_state_i)
@@ -417,21 +430,22 @@ def simulate_robot( envs, modules, record_video, max_xy,
                 u = u_np[i_env, :]
                 env.step(u)
             
-                # check if flipped
-                if np.dot([0,0,1], env.z_axis)<0:
-                    robot_alive[i_env] = False
-
-                # check if out of obstacle course
-                if np.abs(env.pos_xyz[1])>max_xy[1]:
-                    robot_alive[i_env] = False
-
-                # check if stuck
-                pos_queue.append(
-                    np.array([env.pos_xyz[0], env.pos_xyz[1]]))
-                if len(pos_queue) == pos_queue.maxlen:
-                    delta_pos = np.linalg.norm(pos_queue[-1] - pos_queue[0])
-                    if delta_pos<0.02: # threshold for being considered stuck
+                if allow_early_stop:
+                    # check if flipped
+                    if np.dot([0,0,1], env.z_axis) < 0.1:
                         robot_alive[i_env] = False
+
+                    # check if out of obstacle course
+                    if np.abs(env.pos_xyz[1])>max_xy[1]:
+                        robot_alive[i_env] = False
+
+                    # check if stuck
+                    pos_queue.append(
+                        np.array([env.pos_xyz[0], env.pos_xyz[1]]))
+                    if len(pos_queue) == pos_queue.maxlen:
+                        delta_pos = np.linalg.norm(pos_queue[-1] - pos_queue[0])
+                        if delta_pos<0.02: # threshold for being considered stuck
+                            robot_alive[i_env] = False
 
 
     for i_env in range(num_envs):

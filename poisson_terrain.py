@@ -296,6 +296,9 @@ class TerrainRandomizer():
             # basePosition=[shifted_center[0], shifted_center[1], half_height])
         block_IDs[i_env].append(block_ID) 
 
+    # dyn_info = pybullet_client.getDynamicsInfo(bodyUniqueId=block_ID,linkIndex=-1)
+    # print('Block friction: ' + str(dyn_info[1]))  
+
     # print(block_centers)
     # print(half_height_list)
     return block_IDs, block_centers, half_length1_list,half_length2_list,half_height_list

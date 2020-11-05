@@ -36,10 +36,6 @@ class dqn(nn.Module):
             self.conv_layers.append(torch.nn.Conv2d(n_channels, n_channels, 
                 kernel_size=kernel_size, stride=1, padding=kernel_size//2) )
 
-        # self.conv1 = torch.nn.Conv2d(terrain_in_shape[0], n_channels, 
-        #     kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
-        # self.conv2 = torch.nn.Conv2d(n_channels, n_channels, 
-        #         kernel_size=kernel_size, stride=1, padding=kernel_size//2) 
 
         self.fc_terrain = nn.Linear(self.conv_out_size, env_vect_size)
 
@@ -51,10 +47,7 @@ class dqn(nn.Module):
         for i in range(self.n_fc_layers-2):
             self.fc_layers.append(nn.Linear(hidden_layer_size, hidden_layer_size))
         self.fc_layers.append(nn.Linear(hidden_layer_size, n_module_types))
-        # self.fc1 = nn.Linear(env_vect_size+self.modules_in_size, hidden_layer_size)
-        # self.fc2 = nn.Linear(hidden_layer_size, hidden_layer_size)
-        # self.fc3 = nn.Linear(hidden_layer_size, hidden_layer_size)
-        # self.fc4 = nn.Linear(hidden_layer_size, n_module_types)
+
 
 
     def forward(self, designs, terrains):
@@ -62,11 +55,6 @@ class dqn(nn.Module):
         for i in range(self.n_conv_layers):
             x = F.relu(self.conv_layers[i](x))
 
-        # x = F.relu(self.conv1(x))
-        # x = F.relu(self.conv2(x))
-
-        # print(self.conv_out_size)
-        # print(x.shape)
         x = x.view(-1, self.conv_out_size)
         x = F.relu(self.fc_terrain(x))
         # print('forward')
@@ -79,9 +67,6 @@ class dqn(nn.Module):
             x = F.relu(self.fc_layers[i](x))
         x = self.fc_layers[-1](x)
         
-        # x = F.relu(self.fc1(x))
-        # x = F.relu(self.fc2(x))
-        # x = self.fc3(x)
         return x
 
 
