@@ -24,13 +24,21 @@ device = torch.device("cpu")
 np.set_printoptions(precision=2,suppress=True)
 
 terrain_grid_shape = [1,50,20]
+# MAX_BLOCK_HEIGHT_HIGH = 0.1
+MAX_BLOCK_HEIGHT_HIGH = 0.08
+MIN_BLOCK_DISTANCE_LOW = 0.4
+MIN_BLOCK_DISTANCE_HIGH =1.
+MAX_BLOCK_HEIGHT_LOW = 0
 reward_function = 'Simulation'
 # reward_function = 'Recorded Simulation'
 # reward_function = 'Testing Proxy'
+# control_file = 'mbrl_v6_test10/multidesign_control_iter4.pt'
+control_file = 'mbrl_v6_test11/multidesign_control_iter4.pt'
 
 class simulation_runner(object):
 
-    def __init__(self, num_envs = 1, show_GUI=False, record_video=False):
+    def __init__(self, num_envs = 1, show_GUI=False, record_video=False,
+        gui_speed_factor = 1):
         self.num_envs = num_envs
         # self.terrain_grid_shape = [1,20,10] # deltax, deltay
         # self.terrain_grid_shape = [1,50,20] # deltax, deltay
@@ -51,13 +59,15 @@ class simulation_runner(object):
         # self.record_video= True # if show gui and true, records some videos
         # obstacle density and size
         # high and large and dense
-        self.MIN_BLOCK_DISTANCE_LOW = 0.4
-        self.MAX_BLOCK_HEIGHT_HIGH = 0.1
+        self.MIN_BLOCK_DISTANCE_LOW = MIN_BLOCK_DISTANCE_LOW
+        self.MAX_BLOCK_HEIGHT_HIGH = MAX_BLOCK_HEIGHT_HIGH
+        # self.MAX_BLOCK_HEIGHT_HIGH = 0.075
         # shallow and small and sparse
-        self.MIN_BLOCK_DISTANCE_HIGH = 1.
-        self.MAX_BLOCK_HEIGHT_LOW = 0
+        self.MIN_BLOCK_DISTANCE_HIGH = MIN_BLOCK_DISTANCE_HIGH
+        self.MAX_BLOCK_HEIGHT_LOW = MAX_BLOCK_HEIGHT_LOW
         self.terrain_scaling = 1. # 0: no bumps. 1: max bumps
         self.terrain_seed = None
+        self.control_file_loaded = None
         # points for grid height with ray casting
         # self.terrain_grid_shape = [1,20,10]
         grid_x, grid_y = np.meshgrid(
@@ -74,8 +84,10 @@ class simulation_runner(object):
         # load GNN params
         if reward_function == 'Simulation':
 
-            PATH = 'mbrl_v6_test10/multidesign_control_iter4.pt'
+            # PATH = 'mbrl_v6_test10/multidesign_control_iter4.pt'
+            PATH = control_file
             PATH = os.path.join(cwd, PATH)
+            self.control_file_loaded = PATH
             save_dict = torch.load( PATH, map_location=lambda storage, loc: storage)
             print('Loaded network ' + PATH)
             goal_len =3
@@ -98,6 +110,7 @@ class simulation_runner(object):
                 env.follow_with_camera = True
                 # env.p.resetDebugVisualizerCamera(3,0,-89.999,[3,0,0.2],physicsClientId=env.physicsClient) 
                 # env.sim_speed_factor = 5
+                env.sim_speed_factor = gui_speed_factor
 
                 self.envs.append(env)
 
@@ -194,13 +207,13 @@ class simulation_runner(object):
 
         return terrains
 
-    def alter_terrain_height(self, delta_h):
-        for i_env in range(self.num_envs):
-            self.envs[i_env].reset_terrain() # this seems to fix the memory leak
+    # def alter_terrain_height(self, delta_h):
+    #     for i_env in range(self.num_envs):
+    #         self.envs[i_env].reset_terrain() # this seems to fix the memory leak
 
-        self.terrain_randomizer.alter_block_heights(
-            [self.envs[i_env].p for i_env in range(self.num_envs)],
-            delta_h)
+    #     self.terrain_randomizer.alter_block_heights(
+    #         [self.envs[i_env].p for i_env in range(self.num_envs)],
+    #         delta_h)
 
     def check_robot_validity(self, urdf_name):
         is_valid = True
@@ -282,14 +295,9 @@ class simulation_runner(object):
             if not(self.is_valid):
                 rewards -= 10
             else:
-                rewards += simulate_robot( 
-                        self.envs, 
-                        self.modules,
-                        self.record_video,
-                        self.max_xy,
+                rewards += self.simulate_robot( 
                         video_name_addition,
                         n_time_steps,
-                        self.terrain_randomizer,
                         debug_params,
                         allow_early_stop)
 
@@ -326,40 +334,95 @@ class simulation_runner(object):
 
 
 
-def simulate_robot( envs, modules, record_video, max_xy, 
-    video_name_addition, n_time_steps=200, 
-    terrain_randomizer=None, debug_params = None,
-     allow_early_stop = True):
-    # NOTE: assumes that all envs have the same robot loaded
-    num_envs = len(envs)
-    
-    module_action_len= list(np.diff(envs[0].action_indexes))
-    attachments = envs[0].attachments
-    n_modules = len(envs[0].modules_types)
-    pos_queues = [deque(maxlen=20)]*num_envs
-    reward = torch.zeros(num_envs, dtype=torch.float32)
+    def simulate_robot(self,
+        video_name_addition='', n_time_steps=200, 
+         debug_params = None,
+         allow_early_stop = True):
 
-    # get initial debug parameters
-    initial_debug_params = []
-    if debug_params is not None:
-        for param in debug_params:
-            initial_debug_params.append(envs[0].p.readUserDebugParameter(param))
 
-    for env in envs:
-        # subtract out initial x, in case its not exactly zero
-        reward -= env.pos_xyz[0]
-        logID = None
-        if env.show_GUI and record_video:
-            vid_path = os.path.join(cwd, 
-                        env.loaded_urdf+ video_name_addition+'.mp4')
+        envs = self.envs 
+        modules = self.modules
+        record_video = self.record_video
+        max_xy = self.max_xy
+        terrain_randomizer = self.terrain_randomizer
 
-            # if not os.path.exists(vid_path):
-            logID = env.p.startStateLogging(
-                env.p.STATE_LOGGING_VIDEO_MP4,
-                fileName=vid_path)
-            
-    robot_alive = [True]*num_envs
-    for step in range(n_time_steps):
+        # NOTE: assumes that all envs have the same robot loaded
+        num_envs = len(envs)
+        
+
+        pos_queues = [deque(maxlen=25)]*num_envs
+        reward = torch.zeros(num_envs, dtype=torch.float32)
+
+        # get initial debug parameters
+        initial_debug_param_values = []
+        if debug_params is not None:
+            for param in debug_params:
+                initial_debug_param_values.append(envs[0].p.readUserDebugParameter(param))
+
+        for env in envs:
+            # subtract out initial x, in case its not exactly zero
+            reward -= env.pos_xyz[0]
+            logID = None
+            if env.show_GUI and record_video:
+                vid_path = os.path.join(cwd, 
+                            env.loaded_urdf+ video_name_addition+'.mp4')
+
+                # if not os.path.exists(vid_path):
+                logID = env.p.startStateLogging(
+                    env.p.STATE_LOGGING_VIDEO_MP4,
+                    fileName=vid_path)
+                
+        robot_alive = [True]*num_envs
+        for step in range(n_time_steps):
+
+            self.step_envs(robot_alive, debug_params, initial_debug_param_values)
+            if allow_early_stop:
+
+                for i_env in range(num_envs):
+                    if robot_alive[i_env]:
+                        env = envs[i_env]
+                        pos_queue = pos_queues[i_env]
+                        # check if flipped
+                        if np.dot([0,0,1], env.z_axis) < 0.1:
+                            robot_alive[i_env] = False
+
+                        # check if out of obstacle course
+                        if np.abs(env.pos_xyz[1])>max_xy[1]:
+                            robot_alive[i_env] = False
+
+                        # check if stuck
+                        pos_queue.append(
+                            np.array([env.pos_xyz[0], env.pos_xyz[1]]))
+                        if len(pos_queue) == pos_queue.maxlen:
+                            delta_pos = np.linalg.norm(pos_queue[-1] - pos_queue[0])
+                            if delta_pos<0.02: # threshold for being considered stuck
+                                robot_alive[i_env] = False
+
+
+        for i_env in range(num_envs):
+            env = envs[i_env]
+            reward[i_env] += env.pos_xyz[0]
+
+            if env.show_GUI and (logID is not None):
+                env.p.stopStateLogging(logID)
+
+        return reward
+
+
+    def step_envs(self, robot_alive, 
+        debug_params = None, initial_debug_param_values=None):
+
+        envs = self.envs 
+        modules = self.modules
+        record_video = self.record_video
+        max_xy = self.max_xy
+        terrain_randomizer = self.terrain_randomizer
+        num_envs = len(envs)
+
+
+        module_action_len= list(np.diff(envs[0].action_indexes))
+        attachments = envs[0].attachments
+        n_modules = len(envs[0].modules_types)
 
         env_states = []
         goals_world = []
@@ -370,11 +433,6 @@ def simulate_robot( envs, modules, record_video, max_xy,
             
             # set direction to head
             desired_xyyaw = np.zeros(3)
-            # desired_xyyaw[0] = 1.5
-            # desired_xyyaw[1] = -1.5*chassis_y
-            # desired_xyyaw[1] = np.clip(desired_xyyaw[1], -1.5,1.5)
-            # desired_xyyaw[2] = -2.5*chassis_yaw
-            # desired_xyyaw[2] = np.clip(desired_xyyaw[2], -1.5,1.5)
             T= 20
             dt = 20./240.
             speed_scale_xy = (T*dt)*0.314*(1./0.75)
@@ -394,12 +452,18 @@ def simulate_robot( envs, modules, record_video, max_xy,
                     dtype=torch.float32, device=device))
 
         # check if debug params have changed
+        terrain_changed = False
+        terrain_value = None
         if debug_params is not None:
             # for i_param in range(len(debug_params)):
             param_now = env.p.readUserDebugParameter(debug_params[0])
-            if not(param_now == initial_debug_params[0]) and terrain_randomizer is not None:
+            if not(param_now == initial_debug_param_values[0]
+                ) and terrain_randomizer is not None:
                 terrain_randomizer.set_block_heights([envs[0].p],param_now)
-                initial_debug_params[0] = param_now
+                initial_debug_param_values[0] = param_now
+                terrain_changed = True
+                terrain_value = param_now
+
 
         # stack up and pass to gnn in batch
         goals_world = torch.stack(goals_world)
@@ -422,39 +486,12 @@ def simulate_robot( envs, modules, record_video, max_xy,
                 u_out_mean.append(out_mean[mm][:,:module_action_len[mm]])
                 tau_out_mean.append(out_mean[mm][:,module_action_len[mm]:])
             u_np = torch.cat(u_out_mean,-1).numpy()
-        
+            # tau_np = torch.cat(tau_out_mean,-1).numpy()
+
         for i_env in range(num_envs):
             if robot_alive[i_env]:
-                pos_queue = pos_queues[i_env]
                 env = envs[i_env]
                 u = u_np[i_env, :]
                 env.step(u)
-            
-                if allow_early_stop:
-                    # check if flipped
-                    if np.dot([0,0,1], env.z_axis) < 0.1:
-                        robot_alive[i_env] = False
 
-                    # check if out of obstacle course
-                    if np.abs(env.pos_xyz[1])>max_xy[1]:
-                        robot_alive[i_env] = False
-
-                    # check if stuck
-                    pos_queue.append(
-                        np.array([env.pos_xyz[0], env.pos_xyz[1]]))
-                    if len(pos_queue) == pos_queue.maxlen:
-                        delta_pos = np.linalg.norm(pos_queue[-1] - pos_queue[0])
-                        if delta_pos<0.02: # threshold for being considered stuck
-                            robot_alive[i_env] = False
-
-
-    for i_env in range(num_envs):
-        env = envs[i_env]
-        reward[i_env] += env.pos_xyz[0]
-
-        if env.show_GUI and (logID is not None):
-            env.p.stopStateLogging(logID)
-
-    return reward
-
-
+        return terrain_changed, terrain_value

@@ -12,7 +12,7 @@ class dqn(nn.Module):
         n_channels = 2, 
         n_fc_layers = 4,
         env_vect_size=10,
-        hidden_layer_size = 100,
+        hidden_layer_size = 200,
         n_conv_layers = 2):
         super(dqn, self).__init__()
 

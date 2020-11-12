@@ -21,7 +21,8 @@ import os
 import logging
 import numpy as np
 import time
-from simulation_runner import simulation_runner, terrain_grid_shape, reward_function
+from simulation_runner import simulation_runner, terrain_grid_shape, reward_function, control_file
+from simulation_runner import MAX_BLOCK_HEIGHT_HIGH,MIN_BLOCK_DISTANCE_LOW,MIN_BLOCK_DISTANCE_HIGH,MAX_BLOCK_HEIGHT_LOW
 import traceback
 
 # utility that helps manage the logging mess for multiple workers
@@ -46,29 +47,28 @@ console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
 print = logging.info
 
-print('module_penalties: ' + str(module_penalties))
 
 ### hyperparameters
 cpu_count = torch.multiprocessing.cpu_count()
 if cpu_count > 20:
-    NUM_SIM_WORKERS = 16
+    NUM_SIM_WORKERS = 15
 elif cpu_count > 10:
-    NUM_SIM_WORKERS = 8
+    NUM_SIM_WORKERS = 7
 elif cpu_count > 5:
-    NUM_SIM_WORKERS = 5
+    NUM_SIM_WORKERS = 4
 else:
     NUM_SIM_WORKERS = 1
 
 SAVE_BUFFER = True # flag to keep some statistics on the rewards obtained by simulation
 REPLAY_MEMORY_SIZE = 5000
-LR_INIT = 1e-4
+LR_INIT = 1e-4/2.
 N_ACTIONS = num_module_types
 MAX_N_MODULES = 3
 NUM_ENVS = 3 # number of environments to run in parallel
 SIM_TIME_STEPS = 250 # determines the farthest possible travel distance
-NUM_EPISODES = 20000
+NUM_EPISODES = 15000
 TARGET_UPDATE = 100 # how many episodes to delay target net from policy net
-BATCH_SIZE = 200 # number of samples in a batch for dqn learning
+BATCH_SIZE = 250 # number of samples in a batch for dqn learning
 BOLTZMANN_TEMP_START = 10 
 BOLTZMANN_TEMP_MIN = 2
 BOLTZMANN_TEMP_DECAY_CONST = 1./4000 # T = T0*exp(-c*episode) e.g. 10*np.exp(-np.array([0, 1000, 5000])/1000)
@@ -255,7 +255,7 @@ def pusher_worker(policy_net, pipe,
             current_episode.value += 1
         i_episode = current_episode.value
 
-
+        # Training episode:
         # select randomized terrain for training episode
         terrain = sim_runner.randomize_terrains()
         current_boltzmann_temp = boltzmann_temp(i_episode)  # anneals temp
@@ -264,10 +264,10 @@ def pusher_worker(policy_net, pipe,
              terrain, sim_runner,
               current_boltzmann_temp =  current_boltzmann_temp,
               print_str = print_str_now )
-        # run_episode_test(policy_net,replay_memory)
 
 
-        # validation episode
+        # validation episode:
+        # test a selected few robots on a range of terrain
         if (i_episode % VALIDATION_EP == 0 and i_episode>0):
             print('Boltzmann temp at ep ' + str(i_episode) + ': ' + str(current_boltzmann_temp))
             for terrain_block_height in np.linspace(
@@ -299,6 +299,10 @@ def pusher_worker(policy_net, pipe,
 
                 print('-----------')
 
+    pipe.send(None)
+    print('finished pusher_worker ' + str(worker_num))
+    return
+
 
 
 if __name__== "__main__":
@@ -310,12 +314,19 @@ if __name__== "__main__":
     # device = torch.device('cpu')
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-
+    print('module_penalties: ' + str(module_penalties))
+    print('Control file: ' + control_file)
     
+    print('MAX_BLOCK_HEIGHT_LOW = ' + str(MAX_BLOCK_HEIGHT_LOW))
+    print('MAX_BLOCK_HEIGHT_HIGH = ' + str(MAX_BLOCK_HEIGHT_HIGH))
+    print('MIN_BLOCK_DISTANCE_LOW = ' + str(MIN_BLOCK_DISTANCE_LOW))
+    print('MIN_BLOCK_DISTANCE_HIGH = ' + str(MIN_BLOCK_DISTANCE_HIGH))
+
+
     ### Initialize and load policy
     # initiate the policy network 
     PATH = os.path.join(cwd, 'policy_net_params.pt')
-
+    print('save to ' + PATH)
     if RELOAD_WEIGHTS and os.path.exists(PATH):
         save_dict = torch.load(PATH)
         save_dict = dict()
@@ -336,8 +347,14 @@ if __name__== "__main__":
         print('Creating ' + PATH)
         policy_net = dqn(terrain_grid_shape, 
                      max_num_modules = MAX_N_MODULES,
-                     n_conv_layers = 2,
-                     hidden_layer_size = 150)
+                     n_conv_layers = 3,
+                     n_fc_layers = 5,
+                     hidden_layer_size = 200)
+    print('policy_net.n_conv_layers ' + str(policy_net.n_conv_layers))
+    print('policy_net.kernel_size ' + str(policy_net.kernel_size))
+    print('policy_net.hidden_layer_size ' + str(policy_net.hidden_layer_size))
+    print('policy_net.n_fc_layers ' + str(policy_net.n_fc_layers))
+
 
     # share memory for multiprocess
     policy_net.share_memory()
@@ -400,35 +417,43 @@ if __name__== "__main__":
     target_net.load_state_dict(policy_net_copy.state_dict())
     target_net.eval()
     opt_ep = 0
-    while current_episode.value < NUM_EPISODES:
+    running = True
+    alive_list= [True]*num_p # track which workers are alive
+    while running:
+        if current_episode.value >= NUM_EPISODES:
+            running = False
+        i_episode = current_episode.value
 
         # gather data from the pipes
-        alive_list= []
         for i in range(num_p):
             process = processes[i]
-            i_alive = process.is_alive()
-            alive_list.append(i_alive)
-            if i_alive:
+            is_alive = process.is_alive()
+            if not is_alive:
+                alive_list[i] = False
+            if is_alive:
                 while pipes[i].poll():
                     # print('Pipe fileno: ' + str(pipes[i].fileno()))
                     pipe_read = pipes[i].recv()
-                    # replay_memory.push(pipe_read[0], pipe_read[1], 
-                    #     pipe_read[2], pipe_read[3], pipe_read[4], pipe_read[5] )
-                    replay_memory.push(torch.tensor(pipe_read[0]),
+                    if pipe_read is not None:
+                        replay_memory.push(
+                                torch.tensor(pipe_read[0]),
                                 torch.tensor(pipe_read[1]), 
                                 torch.tensor(pipe_read[2]), 
                                 torch.tensor(pipe_read[3]),
                                 torch.tensor(pipe_read[4]),
                                 torch.tensor(pipe_read[5]) )
+                    else:
+                        # a None over the pipe indicates a redundant Done signal
+                        alive_list[i] = False
+
                     # Note: it seems to be better to pass numpy over the pipe
-                    # rather than 
+                    # rather than sharing the entire buffer
                     # print('pushed to memory ' + str(pipe_read[0].data[0:3])) 
-                    # print('pushed to memory ')
+        # if all the workers are done, end the loop
         if not(np.any(alive_list)):
             print('all workers ended')
-            break
+            running = False
 
-        i_episode = current_episode.value
 
         if len(replay_memory) >= BATCH_SIZE:
 
@@ -506,71 +531,32 @@ if __name__== "__main__":
                         print( 'LR: ' + str(param_group['lr']) )
 
 
-            if (opt_ep % SAVE_EP == 0):
-                PATH = os.path.join(cwd, 'policy_net_params.pt')
-                save_dict = dict()
-                save_dict['policy_net_state_dict'] = policy_net.state_dict()
-                save_dict['terrain_in_shape'] = policy_net.terrain_in_shape
-                save_dict['n_module_types'] = policy_net.n_module_types
-                save_dict['max_num_modules'] = policy_net.max_num_modules
-                save_dict['kernel_size']= policy_net.kernel_size
-                save_dict['n_channels']=policy_net.n_channels
-                save_dict['n_fc_layers']=policy_net.n_fc_layers
-                save_dict['env_vect_size']=policy_net.env_vect_size
-                save_dict['hidden_layer_size']=policy_net.hidden_layer_size
-                save_dict['n_conv_layers'] = policy_net.n_conv_layers
-                save_dict['i_episode'] = i_episode
-                save_dict['module_penalties'] = module_penalties
-                torch.save(save_dict, PATH)
+        if (opt_ep % SAVE_EP == 0) and len(replay_memory) >= BATCH_SIZE:
+            PATH = os.path.join(cwd, 'policy_net_params.pt')
+            save_dict = dict()
+            save_dict['policy_net_state_dict'] = policy_net.state_dict()
+            save_dict['terrain_in_shape'] = policy_net.terrain_in_shape
+            save_dict['n_module_types'] = policy_net.n_module_types
+            save_dict['max_num_modules'] = policy_net.max_num_modules
+            save_dict['kernel_size']= policy_net.kernel_size
+            save_dict['n_channels']=policy_net.n_channels
+            save_dict['n_fc_layers']=policy_net.n_fc_layers
+            save_dict['env_vect_size']=policy_net.env_vect_size
+            save_dict['hidden_layer_size']=policy_net.hidden_layer_size
+            save_dict['n_conv_layers'] = policy_net.n_conv_layers
+            save_dict['i_episode'] = i_episode
+            save_dict['opt_ep'] = opt_ep
+            save_dict['module_penalties'] = module_penalties
+            torch.save(save_dict, PATH)
 
-                if SAVE_BUFFER:
-                    PATH2 = os.path.join(cwd, 'buffer_memory.pt')
-                    save_dict2 = replay_memory.get_dict()
-                    save_dict2['reward_function'] = reward_function
-                    torch.save(save_dict2, PATH2)
+            if SAVE_BUFFER:
+                PATH2 = os.path.join(cwd, 'buffer_memory.pt')
+                save_dict2 = replay_memory.get_dict()
+                save_dict2['reward_function'] = reward_function
+                torch.save(save_dict2, PATH2)
         time.sleep(0.01) # keep loop from being too fast
 
 
 
-    # # watch for when all workers are dead, then end
-    # running = True
-    # while running:
-    #     pushers_living = []
-    #     for p in processes[:-1]:
-    #         pushers_living.append(p.is_alive())
-    #     sampler_living = processes[-1].is_alive()
-
-    #     # end loop if the sampler dies, or all pushers die.
-    #     if not(sampler_living) or not(np.any(pushers_living)):
-    #         running = False
-    #     time.sleep(5)
-
     print('Done training')
 
-
-'''
-NOTES
-"RuntimeError: received 0 items of ancdata"
-might be related to ulimit -n
-
-
-
-Traceback (most recent call last):
-  File "main_parallel.py", line 403, in <module>
-    pipe_read[2], pipe_read[3], pipe_read[4], pipe_read[5] )
-  File "/home/cobracommander/anaconda3/lib/python3.7/multiprocessing/connection.py", line 251, in recv
-    return _ForkingPickler.loads(buf.getbuffer())
-  File "/home/cobracommander/anaconda3/lib/python3.7/site-packages/torch/multiprocessing/reductions.py", line 276, in rebuild_storage_fd
-    fd = df.detach()
-  File "/home/cobracommander/anaconda3/lib/python3.7/multiprocessing/resource_sharer.py", line 58, in detach
-    return reduction.recv_handle(conn)
-  File "/home/cobracommander/anaconda3/lib/python3.7/multiprocessing/reduction.py", line 185, in recv_handle
-    return recvfds(s, 1)[0]
-  File "/home/cobracommander/anaconda3/lib/python3.7/multiprocessing/reduction.py", line 161, in recvfds
-    len(ancdata))
-RuntimeError: received 0 items of ancdata
-
-
-
-
-'''

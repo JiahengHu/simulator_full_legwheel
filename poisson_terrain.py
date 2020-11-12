@@ -11,6 +11,7 @@ _MAX_SAMPLE_SIZE = 10
 _MIN_BLOCK_HEIGHT = 0
 _MAX_BLOCK_LENGTH = 1
 _MIN_BLOCK_LENGTH = 0.1
+blockLateralFriction = 0.7 # increase friction on blocks to allow wheels to roll more easily over them
 
 # # high and large and dense
 # _MIN_BLOCK_DISTANCE_LOW = 0.3
@@ -207,7 +208,6 @@ class TerrainRandomizer():
       self):
     self.block_IDs = []
     self.block_height_addition = 0.5 # add to block height belowground
-    
     """Initializes the randomizer.
 
     """
@@ -295,10 +295,12 @@ class TerrainRandomizer():
             basePosition=[shifted_center[0], shifted_center[1], half_height-self.block_height_addition])
             # basePosition=[shifted_center[0], shifted_center[1], half_height])
         block_IDs[i_env].append(block_ID) 
+        
+        # default friction is 0.5, raise it to allow wheels to work better on blocks
+        pybullet_client.changeDynamics(bodyUniqueId=block_ID,linkIndex=-1, lateralFriction=blockLateralFriction)
 
     # dyn_info = pybullet_client.getDynamicsInfo(bodyUniqueId=block_ID,linkIndex=-1)
     # print('Block friction: ' + str(dyn_info[1]))  
-
     # print(block_centers)
     # print(half_height_list)
     return block_IDs, block_centers, half_length1_list,half_length2_list,half_height_list
