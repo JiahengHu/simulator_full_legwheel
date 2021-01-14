@@ -37,6 +37,7 @@ robotID = p.loadURDF(
 num_joints_total = p.getNumJoints(robotID,
                 physicsClientId=physicsClient)
 
+# create a box to test whether only the robot is filtered out 
 box_id = p.createCollisionShape(
     p.GEOM_BOX,
     halfExtents=[.05, .05, 0.1])
@@ -58,9 +59,6 @@ collisionFilterGroup = 1
 collisionFilterMask = 1
 for i in range(-1,num_joints_total):
     p.setCollisionFilterGroupMask(robotID, i,collisionFilterGroup,collisionFilterMask)
-    # p.setCollisionFilterGroupMask(robotID, i,i+1,i+1)
-    # p.setCollisionFilterGroupMask(robotID, i,collisionFilterGroup,i+1)
-    # p.setCollisionFilterGroupMask(robotID, i,i,collisionFilterMask)
 
 rayFromPositions = [[0,0,3], [0.1,0,3], [0,0.1,3]]
 rayToPositions = [[0,0,-3], [0.1,0,-3], [0,0.1,-3]]
@@ -112,32 +110,18 @@ for j in moving_joint_inds:
 # steps to take with no control input before starting up
 # This drops to robot down to a physically possible resting starting position
 for i in range(300):
-    # p.setJointMotorControlArray(robotID, moving_joint_inds,
-    #                           p.TORQUE_CONTROL,
-    #                            forces = -10)
-#     p.setJointMotorControlArray(robotID, moving_joint_inds,
-#                               p.POSITION_CONTROL,
-#                               moving_joint_centers)   
 
     p.setJointMotorControlArray(
             bodyUniqueId=robotID, 
             jointIndices=moving_joint_inds, 
             controlMode=p.VELOCITY_CONTROL,
-            targetVelocities = -5*np.ones(num_joints)*np.sin(i/10))
+            targetVelocities = -5*np.ones(num_joints)*np.sin(i/5))
             # targetVelocities = -2*np.ones(num_joints))
 
     p.stepSimulation()    
     joint_states = p.getJointStates(robotID,
             moving_joint_inds,
             physicsClientId=physicsClient)
-#     print([j[3]==0.0 for j in joint_states[5:10]])
-#     print([j[3] for j in joint_states[5:10]])
-    # print('----------')
-    # print([j[3] for j in joint_states])
-    # print([j[2][3] for j in joint_states])
-    # print([j[2][4] for j in joint_states])
-    # print([j[2][5] for j in joint_states])
-#     print([j[3] for j in joint_states])
 
 
     out = p.rayTestBatch(rayFromPositions=rayFromPositions,
@@ -150,8 +134,6 @@ for i in range(300):
     print('Ray hit:')
     print([out[i][3][-1] for i in range(len(rayFromPositions))])
     # print([out[i][2] for i in range(len(rayFromPositions))])
-
-
 
     time.sleep(2./240)
 

@@ -254,7 +254,7 @@ class simulation_runner(object):
 
                 env = self.envs[i_env]
                 env.reset_robot(urdf_name=urdf_name, 
-                    randomize_xyyaw=randomize_xyyaw, 
+                    randomize_xyyaw=randomize_xyyaw,  # adds a little random perturbation to initial state
                     start_xyyaw=start_xyyaw, randomize_start=False)
                 # add a small amount of noise onto the robot start pose
 
