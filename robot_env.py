@@ -50,7 +50,8 @@ class robot_env:
     # reset terrain
     def reset_terrain(self, plane_transparent=False):
         p = self.p
-        p.resetSimulation(self.physicsClient) # remove all objects from the world and reset the world to initial conditions. (not needed here but kept for example)
+        p.resetSimulation()
+        # p.resetSimulation(self.physicsClient) # remove all objects from the world and reset the world to initial conditions. (not needed here but kept for example)
         p.setGravity(0,0,-9.81,physicsClientId=self.physicsClient)
         if plane_transparent:
             self.planeId = p.loadURDF(os.path.join(pybullet_data.getDataPath(), 

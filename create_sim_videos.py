@@ -6,7 +6,7 @@ NUM_ENVS = 1
 SIM_TIME_STEPS = 250
 
 # sim_runner = simulation_runner(NUM_ENVS, show_GUI=True, record_video=True)
-sim_runner = simulation_runner(NUM_ENVS, show_GUI=True, record_video=False, gui_speed_factor =5)
+sim_runner = simulation_runner(NUM_ENVS, show_GUI=True, record_video=True, gui_speed_factor =5)
 robot_names = ['www', 'lww', 'lwl', 'lll']
 # robot_names = ['www', 'wlw', 'llw']
 

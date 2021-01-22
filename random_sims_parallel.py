@@ -43,14 +43,16 @@ print = logging.info # replace print with logging so that I don't have to find r
 
 ### hyperparameters
 cpu_count = torch.multiprocessing.cpu_count()
-if cpu_count > 20:
-    NUM_SIM_WORKERS = 15
-elif cpu_count > 10:
-    NUM_SIM_WORKERS = 7
-elif cpu_count > 5:
-    NUM_SIM_WORKERS = 4
-else:
-    NUM_SIM_WORKERS = 2
+# if cpu_count > 20:
+#     NUM_SIM_WORKERS = 15
+# elif cpu_count > 10:
+#     NUM_SIM_WORKERS = 7
+# elif cpu_count > 5:
+#     NUM_SIM_WORKERS = 4
+# else:
+#     NUM_SIM_WORKERS = 2
+
+NUM_SIM_WORKERS = 1 # for testing
 
 N_ACTIONS = num_module_types
 MAX_N_MODULES = 3
@@ -58,7 +60,7 @@ REPLAY_MEMORY_SIZE = 5000
 NUM_ENVS = 3 # number of environments to run in each worker.
 # ^ They will all have the same robot and terrain, and the policy will be called in batches.
 SIM_TIME_STEPS = 250 # determines the farthest possible travel distance
-NUM_EPISODES = 1000
+NUM_EPISODES = 10000
 
 
 def run_episode(policy_net,
@@ -130,7 +132,28 @@ def run_episode(policy_net,
                     print(print_str + ' simulated ' + str(robot_name) +
                         ' rewards ' +
                             np.array2string(rewards.numpy(),precision=1) 
-                            + ' Terrain max ' + np.array2string(terrain_max,precision=3) )
+                            + ' Terrain max ' + np.array2string(terrain_max,precision=3))
+
+            if is_training_episode:
+                # add to replay buffer
+                for i_env in range(n_designs):
+                    action = actions[i_env].numpy()
+                    des_i = designs[i_env].numpy()
+                    terr_i = terrains[i_env].numpy()
+                    next_des_i = next_designs[i_env].numpy()
+                    reward = reward.squeeze().numpy()
+                    non_final_i = non_final.numpy()
+                    # print(non_final_i)
+                    # print(des_i)
+                    # print(next_des_i)
+                    # print(reward)
+                    # try:
+                    # send only when reward > 0
+                    if reward >= 0:
+                        pipe.send([des_i, terr_i, action,
+                                   next_des_i, reward, non_final_i])
+
+
             else:
                 print(robot_name)
 
@@ -138,18 +161,7 @@ def run_episode(policy_net,
             non_final = torch.tensor(1, dtype=torch.bool)
         
 
-        if is_training_episode:
-            # add to replay buffer
-            for i_env in range(n_designs):
-                action = actions[i_env].numpy()
-                des_i = designs[i_env].numpy()
-                terr_i = terrains[i_env].numpy()
-                next_des_i = next_designs[i_env].numpy()
-                reward = reward.squeeze().numpy()
-                non_final_i  = non_final.numpy()
-                # try:
-                pipe.send([des_i, terr_i, action, 
-                        next_des_i, reward, non_final_i])
+
 
         # else:
         #     # print('designs')
@@ -186,6 +198,9 @@ def pusher_worker(policy_net, pipe,
         # select randomized terrain for training episode
         terrain = sim_runner.randomize_terrains()
         print_str_now = 'worker:' + str(worker_num) + ', ep:' + str(i_episode)
+        # from matplotlib import pyplot as plt
+        # plt.imshow(terrain[0][0].cpu().numpy())
+        # print(terrain.shape)
         run_episode(policy_net, pipe, True,
              terrain, sim_runner,
               print_str = print_str_now )
@@ -233,7 +248,7 @@ def pusher_worker(policy_net, pipe,
 if __name__== "__main__":
 
     # spawn processes
-    torch.multiprocessing.set_start_method('spawn') # needed for CUDA drivers in parallel
+    torch.multiprocessing.set_start_method('spawn', force=True) # needed for CUDA drivers in parallel
     torch.multiprocessing.set_sharing_strategy('file_system')
 
     # device = torch.device('cpu')
@@ -309,7 +324,20 @@ if __name__== "__main__":
                                 torch.tensor(pipe_read[3]),
                                 torch.tensor(pipe_read[4]),
                                 torch.tensor(pipe_read[5]) )
+
+                        # save robot, terrain and reward every 100 datapoints
+                        num_data = len(replay_memory)
+                        print(f"replay buffer size: {num_data}")
+                        if(num_data>0 and num_data % 30 == 0):
+                            print(f"Saving data")
+                            torch.save(replay_memory.memory_next_state, "designs.pt")
+                            torch.save(replay_memory.memory_terrain, "terrains.pt")
+                            torch.save(replay_memory.memory_reward, "rewards.pt")
+                            print(replay_memory.memory_terrain.shape)
+
+
                     else:
+                        print("pipe return none")
                         # a None over the pipe indicates a redundant Done signal
                         alive_list[i] = False
 

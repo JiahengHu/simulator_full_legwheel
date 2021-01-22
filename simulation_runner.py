@@ -17,6 +17,10 @@ from utils import to_tensors, combine_state, wrap_to_pi, rotate, create_control_
 from collections import deque
 from poisson_terrain import TerrainRandomizer
 import os
+from datetime import datetime
+
+time_program = False
+
 cwd = os.path.dirname(os.path.realpath(__file__))
 
 device = torch.device("cpu")
@@ -119,6 +123,40 @@ class simulation_runner(object):
             self.saved_data = torch.load('rewards_processed.pt')
 
 
+    def save_img(self, index, path = "/home/jeff/Projects/test_robot_generator/terr_img/"):
+        p = self.envs[0].p
+        width = 6
+        height = 3
+        x_offset = 3
+        y_offset = 0
+        # camera
+        pixelWidth = 400
+        pixelHeight = int(pixelWidth * height / width)
+        nearPlane = 0.05
+        farPlane = 15
+        fov = 60
+        aspect = pixelWidth / pixelHeight
+
+        # calculate the camera distance
+        camera_dist = height / 2 / np.tan(np.radians(fov / 2))
+        # print(f"camera distance is {camera_dist}")
+
+        # Initial vectors
+        camera_vector = (0, 0, -1)  # z-axis
+        up_vector = (0, 1, 0)  # y-axis
+        camPos = (x_offset, y_offset, camera_dist)
+        viewMatrix = p.computeViewMatrix(camPos, np.asarray(camPos) + 0.1 * np.asarray(camera_vector), up_vector)
+        projectionMatrix = p.computeProjectionMatrixFOV(fov, aspect, nearPlane, farPlane)
+
+        img = p.getCameraImage(pixelWidth,
+                                   pixelHeight,
+                                   viewMatrix,
+                                   projectionMatrix,
+                                   shadow=1,
+                                   lightDirection=[1, 1, 1])[2]
+        from PIL import Image
+        im = Image.fromarray(img).convert('RGB')
+        im.save(path+str(index), "jpeg")
 
 
     def measure_terrains(self):
@@ -285,6 +323,8 @@ class simulation_runner(object):
     #     get final displacement as reward out
     # todo: set up a batch pool to run simulations with runner
 
+        if time_program:
+            sim_start = datetime.now()
 
         rewards = torch.zeros(self.num_envs, dtype=torch.float32)
 
@@ -329,6 +369,9 @@ class simulation_runner(object):
                         rewards[i_env]+=l_reward
                     elif letter=='w':
                         rewards[i_env]+=w_reward
+
+        if time_program:
+            print(f"whole run_sim takes {datetime.now() - sim_start}")
 
         return rewards
 
@@ -412,6 +455,9 @@ class simulation_runner(object):
     def step_envs(self, robot_alive, 
         debug_params = None, initial_debug_param_values=None):
 
+        if time_program:
+            whole_start = datetime.now()
+
         envs = self.envs 
         modules = self.modules
         record_video = self.record_video
@@ -475,7 +521,10 @@ class simulation_runner(object):
 
         for module in modules: # this prevents the LSTM in the GNN nodes from 
             # learning relations over time, only over internal prop steps.
-            module.reset_hidden_states(num_envs) 
+            module.reset_hidden_states(num_envs)
+
+        if time_program:
+            prop_start = datetime.now()
 
         with torch.no_grad():
             out_mean, out_var = pgnnc.run_propagations(
@@ -488,10 +537,17 @@ class simulation_runner(object):
             u_np = torch.cat(u_out_mean,-1).numpy()
             # tau_np = torch.cat(tau_out_mean,-1).numpy()
 
+        if time_program:
+            print(f"network prop takes {datetime.now() - prop_start}")
+
+        if time_program:
+            step_start = datetime.now()
         for i_env in range(num_envs):
             if robot_alive[i_env]:
                 env = envs[i_env]
                 u = u_np[i_env, :]
                 env.step(u)
-
+        if time_program:
+            print(f"env step takes {datetime.now() - step_start}")
+            print(f"whole env step takes {datetime.now() - whole_start}")
         return terrain_changed, terrain_value
