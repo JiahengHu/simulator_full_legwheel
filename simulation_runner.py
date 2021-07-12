@@ -123,7 +123,7 @@ class simulation_runner(object):
             self.saved_data = torch.load('rewards_processed.pt')
 
 
-    def save_img(self, index, path = "/home/jeff/Projects/test_robot_generator/terr_img/"):
+    def save_img(self, index, path):
         p = self.envs[0].p
         width = 6
         height = 3
