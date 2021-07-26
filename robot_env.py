@@ -47,6 +47,8 @@ class robot_env:
         self.foot_friction = 1.0
         self.wheel_friction = [0.8,0.8,1.4]
 
+        self.power = 0.0
+
     # reset terrain
     def reset_terrain(self, plane_transparent=False):
         p = self.p
@@ -145,9 +147,13 @@ class robot_env:
             if self.loaded_urdf is not None:
                 self.remove_robot()
             self.loaded_urdf = urdf_name
+            urdf_file_name = urdf_name + '.urdf'
+
+            if urdf_name in ["wnwwnw"]:
+                urdf_file_name = "bwnwwnwb" + '.urdf'
 
             self.robotID = p.loadURDF(
-                        os.path.join(cwd, 'urdf', urdf_name + '.urdf'),
+                        os.path.join(cwd, 'urdf', urdf_file_name),
                            basePosition=startPosition, baseOrientation=startOrientation,
                            flags= (p.URDF_MAINTAIN_LINK_ORDER 
                             | p.URDF_USE_SELF_COLLISION
@@ -198,6 +204,7 @@ class robot_env:
                     p.changeDynamics(bodyUniqueId=self.robotID, 
                                     linkIndex=j_ind, lateralFriction=self.foot_friction, 
                                     physicsClientId=self.physicsClient)
+
                     self.foot_wheel_link_inds.append(j_ind)
                 # raise friction value for wheel
                 elif link_name.find('wheel/INPUT')>=0:
@@ -323,7 +330,7 @@ class robot_env:
                     targetVelocity = np.random.uniform(-1,1)*joint_noise*max_vel,
                     physicsClientId=self.physicsClient )
 
-
+        self.power = 0
         self.update_state()
 
         # only need to get measurement stds once at reset
@@ -456,6 +463,12 @@ class robot_env:
             module_state_list.append(module_state)
 
         self.full_state = module_state_list
+
+        # TODO: reset this when new episode starts, multiply by time
+        ## add energy measure
+        self.power += np.sum(np.abs(self.joint_torques * self.joint_vels))*self.time_step
+
+
 
     # Manually set the state of the robot.
     # TODO: might be faster to vectorize the setting of the joint angles

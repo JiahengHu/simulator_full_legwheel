@@ -101,7 +101,7 @@ def run_episode(policy_net,
                                     i_dqn, MAX_N_MODULES,
                                     actions[i_env])
 
-        reward = -torch.tensor(penalty,dtype=torch.float32) # adding a module has no cost for now
+        reward = -torch.tensor(penalty, dtype=torch.float32) # adding a module has no cost for now
         # But this addes the option to have a penalty for certain module types
 
         if i_dqn==(MAX_N_MODULES-1): # we are done
@@ -120,12 +120,15 @@ def run_episode(policy_net,
 
                 # Here is where the simulation is reset and run
                 sim_runner.load_robots(robot_name)
-                rewards = sim_runner.run_sims(n_time_steps=SIM_TIME_STEPS)
+                rewards, power = sim_runner.run_sims(n_time_steps=SIM_TIME_STEPS)
                 # if (sim_runner.reward_function == 'Testing Proxy' or 
                 #     sim_runner.reward_function == 'Recorded Simulation'):
                 #     time.sleep(0.1)
 
                 reward += rewards.mean()
+                # print(rewards.numpy())
+                r_var = rewards.var()
+                # print(r_var.numpy())
                 if sim_runner.is_valid:
                     # print(terrains)
                     terrain_max = terrains.max().numpy()
@@ -143,6 +146,7 @@ def run_episode(policy_net,
                     next_des_i = next_designs[i_env].numpy()
                     reward = reward.squeeze().numpy()
                     non_final_i = non_final.numpy()
+                    r_var = r_var.numpy()
                     # print(non_final_i)
                     # print(des_i)
                     # print(next_des_i)
@@ -151,7 +155,7 @@ def run_episode(policy_net,
                     # send only when reward > 0
                     if reward >= 0:
                         pipe.send([des_i, terr_i, action,
-                                   next_des_i, reward, non_final_i])
+                                   next_des_i, reward, non_final_i, r_var])
 
 
             else:
@@ -246,6 +250,95 @@ def pusher_worker(policy_net, pipe,
 
 
 if __name__== "__main__":
+    collect_single_terr = True
+    if collect_single_terr:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        ### Initialize and load policy
+        policy_net = torch.nn.Module()  # DUMMY POLICY
+        # share memory for multiprocess
+        policy_net.share_memory()
+
+        state_size = [MAX_N_MODULES + N_ACTIONS * MAX_N_MODULES]
+        terrain_size = terrain_grid_shape
+        action_size = [1]
+
+        r_list = np.asarray([
+            [0, 1, 0, 0, 1, 0, 0, 1, 0],
+            [0, 1, 0, 0, 1, 0, 0, 0, 1],
+            [0, 1, 0, 0, 0, 1, 0, 1, 0],
+            [0, 0, 1, 0, 1, 0, 0, 1, 0],
+            [0, 0, 1, 0, 0, 1, 0, 0, 1],
+            [0, 0, 1, 0, 0, 1, 0, 1, 0],
+            [0, 0, 1, 0, 1, 0, 0, 0, 1],
+            [0, 1, 0, 0, 0, 1, 0, 0, 1],
+            [0, 1, 0, 1, 0, 0, 0, 1, 0],
+            [0, 1, 0, 1, 0, 0, 0, 0, 1],
+            [0, 0, 1, 1, 0, 0, 0, 1, 0],
+            [0, 0, 1, 1, 0, 0, 0, 0, 1]
+        ])
+        NUM_ENVS_TEST = 8
+        # Just so that the terrain is the same
+
+        sim_runner = simulation_runner(NUM_ENVS_TEST) #, show_GUI=True, gui_speed_factor =10
+        np.random.seed(42)
+        terrain = sim_runner.randomize_terrains(terrain_block_height=MAX_BLOCK_HEIGHT_HIGH)
+        np.random.seed()
+        reward_list = []
+        r_var_list = []
+        r_max_list = []
+        r_name_list = []
+        energy_list = []
+        for i in range(r_list.shape[0]):
+            # print(next_designs[i_env])
+            mv = torch.tensor(r_list[i]).reshape(MAX_N_MODULES, N_ACTIONS)
+            # print(mv)
+            robot_name = module_vector_list_to_robot_name(mv)
+            print(robot_name)
+            # run policy
+            # robot_names_list = ['lll']
+
+            # Here is where the simulation is reset and run
+            sim_runner.load_robots(robot_name)
+            rewards, power = sim_runner.run_sims(n_time_steps=SIM_TIME_STEPS)
+            # if (sim_runner.reward_function == 'Testing Proxy' or
+            #     sim_runner.reward_function == 'Recorded Simulation'):
+            #     time.sleep(0.1)
+            print(power.numpy())
+            reward = rewards.mean()
+            # print(rewards.numpy())
+            r_var = rewards.var()
+            # print(r_var.numpy())
+            r_var_list.append(r_var.numpy())
+            reward_list.append(reward.numpy())
+            r_max_list.append(rewards.max().numpy())
+            r_name_list.append(robot_name)
+            energy_list.append(power.mean().numpy() / reward_list[-1])
+            if sim_runner.is_valid:
+                # print(terrains)
+                terrain_max = terrain.max().numpy()
+                print(' simulated ' + str(robot_name) +
+                      ' rewards ' +
+                      np.array2string(rewards.numpy(), precision=1)
+                      + ' Terrain max ' + np.array2string(terrain_max, precision=3)
+                      + ' reward_variance ' + str(r_var) + 'reward_mean ' + str(reward)
+                      + ' energy ' + str(energy_list[-1]))
+        import matplotlib.pyplot as plt
+        # print(r_max_list, r_var_list)
+        plt.scatter(r_max_list, r_var_list)
+        plt.xlabel("max_distance")
+        plt.ylabel("distance_variance")
+        plt.show()
+        # plt.scatter(reward_list, r_var_list)
+        # plt.show()
+        plt.scatter(reward_list, energy_list)
+        plt.xlabel("mean_distance")
+        plt.ylabel("energy_cost_per_distance")
+        plt.show()
+        np.save("r_name", r_name_list)
+        np.save("r_max", r_max_list)
+        np.save("r_mean", reward_list)
+        np.save("r_var", r_var_list)
+        exit()
 
     # spawn processes
     torch.multiprocessing.set_start_method('spawn', force=True) # needed for CUDA drivers in parallel
@@ -317,13 +410,16 @@ if __name__== "__main__":
                     # print('Pipe fileno: ' + str(pipes[i].fileno()))
                     pipe_read = pipes[i].recv()
                     if pipe_read is not None:
+                        # if(pipe_read[4]<0):
+                        #     continue
                         replay_memory.push(
                                 torch.tensor(pipe_read[0]),
                                 torch.tensor(pipe_read[1]), 
                                 torch.tensor(pipe_read[2]), 
                                 torch.tensor(pipe_read[3]),
                                 torch.tensor(pipe_read[4]),
-                                torch.tensor(pipe_read[5]) )
+                                torch.tensor(pipe_read[5]),
+                                torch.tensor(pipe_read[6]))
 
                         # save robot, terrain and reward every 100 datapoints
                         num_data = len(replay_memory)
@@ -333,6 +429,7 @@ if __name__== "__main__":
                             torch.save(replay_memory.memory_next_state, "designs.pt")
                             torch.save(replay_memory.memory_terrain, "terrains.pt")
                             torch.save(replay_memory.memory_reward, "rewards.pt")
+                            torch.save(replay_memory.memory_rvar, "rvar.pt")
                             print(replay_memory.memory_terrain.shape)
 
 

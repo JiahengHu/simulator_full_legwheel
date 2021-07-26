@@ -13,13 +13,14 @@ class replay_buffer(object):
         self.memory_next_state = torch.zeros( [capacity]+state_size, dtype=torch.float32)
         self.memory_reward= torch.zeros( [capacity], dtype=torch.float32)
         self.memory_non_final= torch.zeros( [capacity], dtype=torch.bool)
+        self.memory_rvar = torch.zeros([capacity], dtype=torch.float32)
         self._size = 0
         self._next_idx = 0
 
     def can_sample(self,batch_size):
         return self._size>=batch_size
 
-    def push(self, state, terrain, action, next_state, reward, non_final):
+    def push(self, state, terrain, action, next_state, reward, non_final, rvar):
         """Saves a transition."""
         self.memory_state[self._next_idx,:] = state
         self.memory_terrain[self._next_idx,:,:] = terrain
@@ -27,6 +28,7 @@ class replay_buffer(object):
         self.memory_next_state[self._next_idx,:] = next_state
         self.memory_reward[self._next_idx] = reward
         self.memory_non_final[self._next_idx] = non_final
+        self.memory_rvar[self._next_idx] = rvar
 
         self._next_idx = (self._next_idx + 1) % self.capacity
 
@@ -44,8 +46,8 @@ class replay_buffer(object):
         next_states = self.memory_next_state[idxes,:]
         rewards = self.memory_reward[idxes]
         non_finals = self.memory_non_final[idxes]
-
-        return states, terrains, actions,next_states, rewards, non_finals
+        rvar = self.memory_rvar[idxes]
+        return states, terrains, actions,next_states, rewards, non_finals, rvar
 
 
     def __len__(self):
@@ -61,5 +63,6 @@ class replay_buffer(object):
         dict_out['next_states']   = self.memory_next_state 
         dict_out['rewards']  = self.memory_reward
         dict_out['non_finals']  = self.memory_non_final
+        dict_out['rvar'] = self.memory_rvar
         dict_out['size'] = self._size
         return dict_out

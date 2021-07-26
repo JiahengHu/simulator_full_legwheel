@@ -207,10 +207,11 @@ class simulation_runner(object):
 
             # pick a random seed for which all the terrains will use,
             # so that they all get the same new terrain
-            if self.show_GUI and self.record_video:
-                new_seed = 0
-                np.random.seed(new_seed)
-                torch.manual_seed(new_seed)
+            # if self.show_GUI and self.record_video:
+            #     new_seed = 0
+            #     np.random.seed(new_seed)
+            #     torch.manual_seed(new_seed)
+
                 # make videos where all robots have the same terrain
             # else:
             #     new_seed = np.random.randint(4294967295)
@@ -275,8 +276,13 @@ class simulation_runner(object):
         # these are the parts we need to save for later
         self.modules_list = []
         self.is_valid = []
-        urdf_name = robot_name + robot_name[::-1] # for symmetric designs
+        if len(robot_name) == 3:
+            urdf_name = robot_name + robot_name[::-1] # for symmetric designs
+        else:
+            urdf_name = robot_name
         is_valid = self.check_robot_validity(urdf_name)
+
+
         self.is_valid = is_valid
 
         if is_valid and reward_function == 'Simulation':
@@ -327,19 +333,22 @@ class simulation_runner(object):
             sim_start = datetime.now()
 
         rewards = torch.zeros(self.num_envs, dtype=torch.float32)
-
+        power = torch.zeros(self.num_envs, dtype=torch.float32)
 
         if reward_function == 'Simulation':
 
 
             if not(self.is_valid):
                 rewards -= 10
+                power += 10
             else:
-                rewards += self.simulate_robot( 
+                r, p = self.simulate_robot(
                         video_name_addition,
                         n_time_steps,
                         debug_params,
                         allow_early_stop)
+                rewards += r
+                power += p
 
 
         elif reward_function == 'Recorded Simulation':
@@ -373,7 +382,7 @@ class simulation_runner(object):
         if time_program:
             print(f"whole run_sim takes {datetime.now() - sim_start}")
 
-        return rewards
+        return rewards, power
 
 
 
@@ -395,7 +404,7 @@ class simulation_runner(object):
 
         pos_queues = [deque(maxlen=25)]*num_envs
         reward = torch.zeros(num_envs, dtype=torch.float32)
-
+        power = torch.zeros(num_envs, dtype=torch.float32)
         # get initial debug parameters
         initial_debug_param_values = []
         if debug_params is not None:
@@ -445,11 +454,11 @@ class simulation_runner(object):
         for i_env in range(num_envs):
             env = envs[i_env]
             reward[i_env] += env.pos_xyz[0]
-
+            power[i_env] += env.power
             if env.show_GUI and (logID is not None):
                 env.p.stopStateLogging(logID)
 
-        return reward
+        return reward, power
 
 
     def step_envs(self, robot_alive, 
@@ -484,6 +493,7 @@ class simulation_runner(object):
             speed_scale_xy = (T*dt)*0.314*(1./0.75)
             speed_scale_yaw = (T*dt)*1.1*(1./0.75)
 
+            #TODO: play with it (turn 4 to 3, turn 2 to 0.1)
             desired_xyyaw[0] = speed_scale_xy
             desired_xyyaw[1] = -speed_scale_xy*chassis_y*4
             desired_xyyaw[1] = np.clip(desired_xyyaw[1], -speed_scale_xy, speed_scale_xy)
@@ -494,7 +504,7 @@ class simulation_runner(object):
             env_state_i = env.get_state()
             env_states.append(env_state_i)
 
-            goals_world.append( torch.tensor(desired_xyyaw, 
+            goals_world.append(torch.tensor(desired_xyyaw,
                     dtype=torch.float32, device=device))
 
         # check if debug params have changed
@@ -547,6 +557,7 @@ class simulation_runner(object):
                 env = envs[i_env]
                 u = u_np[i_env, :]
                 env.step(u)
+                # power = np.sum(np.abs(env.joint_torques * env.joint_vels))
         if time_program:
             print(f"env step takes {datetime.now() - step_start}")
             print(f"whole env step takes {datetime.now() - whole_start}")
