@@ -147,6 +147,10 @@ def run_episode(policy_net,
                     reward = reward.squeeze().numpy()
                     non_final_i = non_final.numpy()
                     r_var = r_var.numpy()
+
+                    # for calculating the energy
+                    r_var = power.mean().numpy() / reward
+
                     # print(non_final_i)
                     # print(des_i)
                     # print(next_des_i)
@@ -338,6 +342,7 @@ if __name__== "__main__":
         np.save("r_max", r_max_list)
         np.save("r_mean", reward_list)
         np.save("r_var", r_var_list)
+        np.save("r_energy", energy_list)
         exit()
 
     # spawn processes
@@ -429,7 +434,7 @@ if __name__== "__main__":
                             torch.save(replay_memory.memory_next_state, "designs.pt")
                             torch.save(replay_memory.memory_terrain, "terrains.pt")
                             torch.save(replay_memory.memory_reward, "rewards.pt")
-                            torch.save(replay_memory.memory_rvar, "rvar.pt")
+                            torch.save(replay_memory.memory_rvar, "rvar.pt")  # this is actually energy
                             print(replay_memory.memory_terrain.shape)
 
 
