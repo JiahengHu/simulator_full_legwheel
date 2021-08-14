@@ -81,15 +81,15 @@
     <link name="${name}/INPUT_INTERFACE">
       <visual>
         <xacro:if value="${model_name.startswith('X5')}">
-          <origin xyz="0 0 0.0125" rpy="0 0 0" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
           <geometry>
-            <cylinder radius="0.035" length="0.025"/>
+            <mesh filename="${mesh_filename}" scale="0.001 0.001 0.001"/>
           </geometry>
         </xacro:if>
         <xacro:if value="${model_name.startswith('X8')}">
-          <origin xyz="0 0 0.02" rpy="0 0 0" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
           <geometry>
-            <cylinder radius="0.035" length="0.04"/>
+            <mesh filename="${mesh_filename}" scale="0.001 0.001 0.001"/>
           </geometry>
         </xacro:if>
 

@@ -12,10 +12,10 @@ import torch
 # 0 = no module
 # 1 = leg
 # 2 = wheel
-module_types = ['n', 'l', 'w']
+module_types = ['n', 'l', 'w', 'b']
 num_module_types = len(module_types)
 # module_penalties = [0, 0.1, 0.2/3.0] # penalties for number of joints
-module_penalties = [0,0,0]
+module_penalties = [0,0,0,0]
 
 def num_list_to_one_hot(num_list):
     module_vector_list = []

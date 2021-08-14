@@ -9,7 +9,7 @@ SIM_TIME_STEPS = 250
 
 sim_runner = simulation_runner(NUM_ENVS, show_GUI=True, record_video=True, gui_speed_factor =5)
 np.random.seed(42)
-terrain_block_height = 0.08
+terrain_block_height = 0.01
 terrain_block_distance = None
 terrain = sim_runner.randomize_terrains(
     terrain_block_height=terrain_block_height,
@@ -18,7 +18,7 @@ np.random.seed()
 
 # robot_names = ['www', 'lww', 'lwl', 'lll']
 robot_names = ['lww', 'wll', 'lnw', 'llw']# ['lwlwlw']#['wnw']# ['llwlwl']
-robot_names = ['lll']
+robot_names = ['lww']
 # terrain_block_height = sim_runner.MAX_BLOCK_HEIGHT_LOW
 # terrain_block_height = sim_runner.MAX_BLOCK_HEIGHT_HIGH
 terrain_block_heights =  np.linspace(

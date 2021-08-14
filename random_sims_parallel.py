@@ -266,26 +266,30 @@ if __name__== "__main__":
         terrain_size = terrain_grid_shape
         action_size = [1]
 
-        r_list = np.asarray([
-            [0, 1, 0, 0, 1, 0, 0, 1, 0],
-            [0, 1, 0, 0, 1, 0, 0, 0, 1],
-            [0, 1, 0, 0, 0, 1, 0, 1, 0],
-            [0, 0, 1, 0, 1, 0, 0, 1, 0],
-            [0, 0, 1, 0, 0, 1, 0, 0, 1],
-            [0, 0, 1, 0, 0, 1, 0, 1, 0],
-            [0, 0, 1, 0, 1, 0, 0, 0, 1],
-            [0, 1, 0, 0, 0, 1, 0, 0, 1],
-            [0, 1, 0, 1, 0, 0, 0, 1, 0],
-            [0, 1, 0, 1, 0, 0, 0, 0, 1],
-            [0, 0, 1, 1, 0, 0, 0, 1, 0],
-            [0, 0, 1, 1, 0, 0, 0, 0, 1]
-        ])
+        r_int_list = np.array([[3,3,3], [3,2,3], [1,1,1], [2,2,2], [1,2,2], [2,3,3]])
+        r_int_list = np.array([[1,3,3]])
+        r_list = np.eye(N_ACTIONS)[r_int_list]
+
+        # r_list = np.asarray([
+        #     [0, 1, 0, 0, 1, 0, 0, 1, 0],
+        #     [0, 1, 0, 0, 1, 0, 0, 0, 1],
+        #     [0, 1, 0, 0, 0, 1, 0, 1, 0],
+        #     [0, 0, 1, 0, 1, 0, 0, 1, 0],
+        #     [0, 0, 1, 0, 0, 1, 0, 0, 1],
+        #     [0, 0, 1, 0, 0, 1, 0, 1, 0],
+        #     [0, 0, 1, 0, 1, 0, 0, 0, 1],
+        #     [0, 1, 0, 0, 0, 1, 0, 0, 1],
+        #     [0, 1, 0, 1, 0, 0, 0, 1, 0],
+        #     [0, 1, 0, 1, 0, 0, 0, 0, 1],
+        #     [0, 0, 1, 1, 0, 0, 0, 1, 0],
+        #     [0, 0, 1, 1, 0, 0, 0, 0, 1]
+        # ])
         NUM_ENVS_TEST = 8
         # Just so that the terrain is the same
 
         sim_runner = simulation_runner(NUM_ENVS_TEST) #, show_GUI=True, gui_speed_factor =10
         np.random.seed(42)
-        terrain = sim_runner.randomize_terrains(terrain_block_height=MAX_BLOCK_HEIGHT_HIGH)
+        terrain = sim_runner.randomize_terrains(terrain_block_height=0.01)
         np.random.seed()
         reward_list = []
         r_var_list = []
@@ -328,10 +332,10 @@ if __name__== "__main__":
                       + ' energy ' + str(energy_list[-1]))
         import matplotlib.pyplot as plt
         # print(r_max_list, r_var_list)
-        plt.scatter(r_max_list, r_var_list)
-        plt.xlabel("max_distance")
-        plt.ylabel("distance_variance")
-        plt.show()
+        # plt.scatter(r_max_list, r_var_list)
+        # plt.xlabel("max_distance")
+        # plt.ylabel("distance_variance")
+        # plt.show()
         # plt.scatter(reward_list, r_var_list)
         # plt.show()
         plt.scatter(reward_list, energy_list)

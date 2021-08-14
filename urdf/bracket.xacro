@@ -51,7 +51,6 @@
 
     <!-- Heavy bracket -->
     <xacro:if value="${bracket_type.startswith('X5Heavy') or bracket_type.startswith('R5Heavy')}">
-      <!-- REMOVED VISUAL AND COLLISION FOR SPEED
       <visual>
         <xacro:if value="${bracket_type.endswith('RightOutside')}">
           <origin xyz="0 0 0.005" rpy="${pi/2} 0 ${pi/2}"/>
@@ -93,6 +92,7 @@
         </geometry>
         <xacro:black_material/>
       </visual>
+      <!-- REMOVED COLLISION FOR SPEED
 
       <collision>
         <xacro:if value="${bracket_type.endswith('RightOutside')}">

@@ -161,6 +161,14 @@ class Leg(Node): # sensors 2, actuators 2, ports 1
          6, 3*2, 1, hidden_layer_size=hidden_layer_size)
         # three angle, three vels = 6. three actuators
 
+class Wheelleg(Node): # sensors, actuators, ports
+    # (reads joint angle, outputs joint velocity)
+    def __init__(self, internal_state_len, message_len, hidden_layer_size):
+        super().__init__("Wheelleg", internal_state_len, message_len,
+            7, 4*2, 1, hidden_layer_size=hidden_layer_size)
+        # one angle, two vels = 3. two actuators
+
+
 # Module class, each module added to the robot is one of these. The module has a GNN node, which is shared 
 # among all modules of the same type, but each module has an internal state and messages which are not shared.
 class Module():
@@ -230,6 +238,11 @@ def create_GNN_nodes(internal_state_len, message_len, hidden_layer_size,
     shared_nodes.append(Wheel(internal_state_len=internal_state_len, 
                             message_len=message_len, 
                             hidden_layer_size=hidden_layer_size).to(device))
+   # module type 3: wheelleg
+    shared_nodes.append(Wheelleg(internal_state_len=internal_state_len, 
+                            message_len=message_len, 
+                            hidden_layer_size=hidden_layer_size).to(device))
+
     # later more node types here
 
     return shared_nodes

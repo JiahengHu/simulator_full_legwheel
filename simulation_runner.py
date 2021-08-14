@@ -37,7 +37,8 @@ reward_function = 'Simulation'
 # reward_function = 'Recorded Simulation'
 # reward_function = 'Testing Proxy'
 # control_file = 'mbrl_v6_test10/multidesign_control_iter4.pt'
-control_file = 'mbrl_v6_test11/multidesign_control_iter4.pt'
+# control_file = 'mbrl_v6_test11/multidesign_control_iter4.pt'
+control_file = 'mbrl_b_v8_test5/multidesign_control_iter3.pt'
 
 class simulation_runner(object):
 
@@ -454,7 +455,10 @@ class simulation_runner(object):
         for i_env in range(num_envs):
             env = envs[i_env]
             reward[i_env] += env.pos_xyz[0]
-            power[i_env] += env.power
+            try:
+                power[i_env] += env.power
+            except:
+                print("Warning: power is not implemented")
             if env.show_GUI and (logID is not None):
                 env.p.stopStateLogging(logID)
 

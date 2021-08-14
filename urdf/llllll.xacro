@@ -4,6 +4,7 @@
 <xacro:include filename="hebi.xacro"/>
 <xacro:include filename="leg.xacro"/>
 <xacro:include filename="wheel.xacro"/>
+<xacro:include filename="wheelleg.xacro"/>
 <xacro:include filename="chassis.xacro"/>
 <xacro:chassis/>
 

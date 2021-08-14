@@ -24,12 +24,16 @@ class robot_env:
             # self.physicsClient = p.connect(p.GUI)# p.DIRECT for non-graphical version
             p = bc.BulletClient(connection_mode=pybullet.GUI)
             self.physicsClient = p._client
+
+
         else:
             # initialize physics engine when environment is made    
             # self.physicsClient = p.connect(p.DIRECT)# p.DIRECT for non-graphical version
             p = bc.BulletClient(connection_mode=pybullet.DIRECT)
             self.physicsClient = p._client
 
+
+        
         p.resetDebugVisualizerCamera(2,0,-25,[0,0,0],physicsClientId=self.physicsClient) # I like this view
         p.configureDebugVisualizer(p.COV_ENABLE_GUI,0,physicsClientId=self.physicsClient)
         # turn off shadows
@@ -44,30 +48,40 @@ class robot_env:
         self.loaded_urdf = None
         self.follow_with_camera = False # follow the robot with camera
 
-        self.foot_friction = 1.0
-        self.wheel_friction = [0.8,0.8,1.4]
+        self.foot_friction = 1.2
+        self.wheel_friction = [0.8,0.8,1.8]
 
-        self.power = 0.0
+        # self.foot_friction = 1.0
+        # self.wheel_friction = [0.8,0.8,1.4]
+        self.plane_friction = 0.8
 
     # reset terrain
     def reset_terrain(self, plane_transparent=False):
         p = self.p
-        p.resetSimulation()
         # p.resetSimulation(self.physicsClient) # remove all objects from the world and reset the world to initial conditions. (not needed here but kept for example)
+        p.resetSimulation()
         p.setGravity(0,0,-9.81,physicsClientId=self.physicsClient)
         if plane_transparent:
-            self.planeId = p.loadURDF(os.path.join(pybullet_data.getDataPath(), 
-                "plane_transparent.urdf"),
+            self.planeId = p.loadURDF(
+                os.path.join(cwd, 'urdf', 'plane_white.urdf'),
                 physicsClientId=self.physicsClient)
+            p.changeVisualShape(self.planeId, -1, rgbaColor=[1, 1, 1, 0])
+
         else:
             self.planeId = p.loadURDF(os.path.join(pybullet_data.getDataPath(),
                 "plane100.urdf"),
                 physicsClientId=self.physicsClient)
 
+        if self.plane_friction is not None:  
+            p.changeDynamics(bodyUniqueId=self.planeId, 
+                        linkIndex=-1, lateralFriction=self.plane_friction, 
+                        physicsClientId=self.physicsClient)
+
         p.setTimeStep(self.time_step, physicsClientId=self.physicsClient)
         self.loaded_urdf = None
         self.robotID = None
-        
+        self.arrow_ids = []
+        self.arrow_data = None
         # dyn_info = p.getDynamicsInfo(bodyUniqueId=self.planeId,linkIndex=-1,
         #             physicsClientId=self.physicsClient)
         # print('Plane friction: ' + str(dyn_info[1]))
@@ -147,13 +161,9 @@ class robot_env:
             if self.loaded_urdf is not None:
                 self.remove_robot()
             self.loaded_urdf = urdf_name
-            urdf_file_name = urdf_name + '.urdf'
-
-            if urdf_name in ["wnwwnw"]:
-                urdf_file_name = "bwnwwnwb" + '.urdf'
 
             self.robotID = p.loadURDF(
-                        os.path.join(cwd, 'urdf', urdf_file_name),
+                        os.path.join(cwd, 'urdf', urdf_name + '.urdf'),
                            basePosition=startPosition, baseOrientation=startOrientation,
                            flags= (p.URDF_MAINTAIN_LINK_ORDER 
                             | p.URDF_USE_SELF_COLLISION
@@ -204,7 +214,6 @@ class robot_env:
                     p.changeDynamics(bodyUniqueId=self.robotID, 
                                     linkIndex=j_ind, lateralFriction=self.foot_friction, 
                                     physicsClientId=self.physicsClient)
-
                     self.foot_wheel_link_inds.append(j_ind)
                 # raise friction value for wheel
                 elif link_name.find('wheel/INPUT')>=0:
@@ -269,6 +278,15 @@ class robot_env:
                     action_indexes.append(action_indexes[-1]+2) # the next two actions are for this module
                     ii+=1
 
+                elif letter=='b':
+                    modules_types.append(3) # module type
+                    chassis_attachments.append(ii)
+                    limb_attachments.append([0]) # attached to chassis
+                    module_joint_is_on.extend([i,i,i]) # three joints on wheelleg
+                    joint_index_on_module.extend([0,1,2,4])
+                    action_indexes.append(action_indexes[-1]+4) # the next three actions are for this module
+                    ii+=1
+
                 elif letter=='n':
                     chassis_attachments.append(None)
                     # no actions are for this module
@@ -330,7 +348,7 @@ class robot_env:
                     targetVelocity = np.random.uniform(-1,1)*joint_noise*max_vel,
                     physicsClientId=self.physicsClient )
 
-        self.power = 0
+
         self.update_state()
 
         # only need to get measurement stds once at reset
@@ -460,15 +478,38 @@ class robot_env:
                 current_joint+=1
                 module_state=np.append(module_state,dtheta2)
 
+            elif self.modules_types[i]==3: # wheelleg module
+                # first and second joints revolute
+                for leg_j in range(3):
+                    joint_state = joint_states[current_joint]
+                    theta = joint_state[0]
+                    dtheta = joint_state[1]#/self.moving_joint_max_velocities[current_joint]
+                    tau = joint_state[3]#/self.moving_joint_max_torques[current_joint]
+                    # appliedJointMotorTorque is index 3
+                    self.joint_angles=np.append(self.joint_angles,theta)
+                    self.joint_vels=np.append(self.joint_vels,dtheta)
+                    self.joint_torques=np.append(self.joint_torques,tau)
+                    current_joint+=1
+                    module_state=np.append(module_state,theta)
+                    module_state=np.append(module_state,dtheta)
+
+                # last joint is continuous
+                # wheel only reports is speed, since its position doesnt matter
+                joint_state = joint_states[current_joint]
+                # theta 2 is irrelavant for a wheel so I am removing it. dtheta2 is useful.
+                theta2 = joint_state[0]
+                dtheta2 = joint_state[1]#/self.moving_joint_max_velocities[current_joint]
+                tau2 = joint_state[3]#/self.moving_joint_max_torques[current_joint]
+                self.joint_angles=np.append(self.joint_angles,theta2)
+                # keep track of theta2 for bookkeeping
+                self.joint_vels=np.append(self.joint_vels,dtheta2)
+                self.joint_torques=np.append(self.joint_torques,tau2)
+                current_joint+=1
+                module_state=np.append(module_state,dtheta2)
+
             module_state_list.append(module_state)
 
         self.full_state = module_state_list
-
-        # TODO: reset this when new episode starts, multiply by time
-        ## add energy measure
-        self.power += np.sum(np.abs(self.joint_torques * self.joint_vels))*self.time_step
-
-
 
     # Manually set the state of the robot.
     # TODO: might be faster to vectorize the setting of the joint angles
@@ -513,6 +554,24 @@ class robot_env:
                         self.moving_joint_inds[current_joint],
                         theta1, dtheta1)#, self.physicsClient)
                 current_joint+=1
+
+                # second joint is continuous
+                # wheel only reports is speed, since its position doesnt matter
+                dtheta2 = state[2]
+                theta2 = self.joint_angles[current_joint] # leave wheel angle alone
+                p.resetJointState(self.robotID, 
+                        self.moving_joint_inds[current_joint],
+                        theta2, dtheta2)#, self.physicsClient)
+                current_joint+=1
+
+            elif self.modules_types[i]==3: # wheelleg module
+                for leg_j in range(3):
+                    theta = state[2*leg_j]
+                    dtheta = state[2*leg_j+1]
+                    p.resetJointState(self.robotID, 
+                        self.moving_joint_inds[current_joint],
+                        theta, dtheta)#, self.physicsClient)
+                    current_joint+=1
 
                 # second joint is continuous
                 # wheel only reports is speed, since its position doesnt matter
@@ -647,6 +706,9 @@ class robot_env:
             elif self.loaded_urdf[i]=='w': 
                 pos_i = np.array([])
                 current_joint+=2
+            elif self.loaded_urdf[i]=='b': 
+                pos_i = np.array([])
+                current_joint+=4
             elif self.loaded_urdf[i]=='n': 
                 pos_i = np.array([])
 
@@ -670,6 +732,9 @@ class robot_env:
             elif self.loaded_urdf[i]=='w': 
                 v_i = np.array([])
                 current_joint+=2
+            elif self.loaded_urdf[i]=='b': 
+                v_i = np.array([])
+                current_joint+=4
             elif self.loaded_urdf[i]=='n': 
                 v_i = np.array([])
 
@@ -729,24 +794,11 @@ class robot_env:
                 measurement_stds.append(
                     torch.tensor([2e-5, 5e-2, 5e-2],
                       dtype=torch.float32) )   
-        # for i in range(len(self.modules_types)):
-        #     if self.modules_types[i]==0: # chassis
-        #         measurement_stds.append(
-        #             torch.tensor([0, 0, 1e-04, # xyz
-        #                 2e-02, 2e-02, 2e-02, # rpy
-        #                 0,0,0, # vxyz
-        #                 5e-2, 5e-2, 5e-2 # w_xyz
-        #                 ], dtype=torch.float32) )
-
-        #     elif self.modules_types[i]==1: # get joint angles on legs 
-        #         measurement_stds.append(
-        #             torch.tensor([1e-3, 2e-2, 1e-3, 2e-2, 1e-3, 2e-2],
-        #               dtype=torch.float32) )
-        #     elif self.modules_types[i]==2: # wheel module
-        #         measurement_stds.append(
-        #             torch.tensor([1e-3, 2e-2, 1e-1],
-        #               dtype=torch.float32) )   
-
+            elif self.modules_types[i]==3: # wheelleg module
+                measurement_stds.append(
+                    torch.tensor([2e-5, 5e-2, 2e-5, 5e-2, 2e-5, 5e-2, 5e-2],
+                      dtype=torch.float32) )   
+   
         return measurement_stds
     # example sensor noise 
 # [tensor([0.0000e+00, 0.0000e+00, 1.3288e-05, 6.3331e-05, 5.6818e-04, 2.5309e-02,
@@ -843,6 +895,41 @@ class robot_env:
                     lineWidth = 2,
                     physicsClientId=self.physicsClient)
                 self.arrow_ids.append([self.arrow_id0, self.arrow_id1, self.arrow_id2])
+
+
+    def set_friction(self, plane_friction=None, wheel_friction=None, foot_friction=None):
+        if plane_friction is not None:
+            self.plane_friction = plane_friction
+            p.changeDynamics(bodyUniqueId=self.planeId, 
+                linkIndex=-1, lateralFriction=self.plane_friction, 
+                physicsClientId=self.physicsClient)
+
+        if foot_friction is not None:
+            self.foot_friction = foot_friction
+
+        if wheel_friction is not None:
+            self.wheel_friction = wheel_friction
+
+        # count all joints, including fixed ones
+        num_joints_total = p.getNumJoints(self.robotID,
+                        physicsClientId=self.physicsClient)
+        for j_ind in range(num_joints_total):
+            j_info = p.getJointInfo(self.robotID, 
+                j_ind, physicsClientId=self.physicsClient)
+            link_name = str(j_info[12])
+            # raise friction value for feet
+            if link_name.find('foot/INPUT')>=0:
+                p.changeDynamics(bodyUniqueId=self.robotID, 
+                                linkIndex=j_ind, lateralFriction=self.foot_friction, 
+                                physicsClientId=self.physicsClient)
+                self.foot_wheel_link_inds.append(j_ind)
+            # raise friction value for wheel
+            elif link_name.find('wheel/INPUT')>=0:
+                p.changeDynamics(bodyUniqueId=self.robotID, 
+                                linkIndex=j_ind, lateralFriction=1.0, 
+                                anisotropicFriction=self.wheel_friction,
+                                physicsClientId=self.physicsClient)
+
 
     def get_ff_torque_approx(self):
     # return a rough approximation of the ff torques for legs
