@@ -1,7 +1,6 @@
 '''
 This version has a network trainer and workers, but for demonstration,
-here the networks have all been removed and random designs are picked. 
-
+here the networks have all been removed and random designs are picked.
 '''
 
 
@@ -62,6 +61,10 @@ NUM_ENVS = 3 # number of environments to run in each worker.
 SIM_TIME_STEPS = 250 # determines the farthest possible travel distance
 NUM_EPISODES = 10000
 
+# testing parameters
+collect_single_terr = True
+show_terrain = False
+draw_reward = True
 
 def run_episode(policy_net,
             pipe,
@@ -251,10 +254,61 @@ def pusher_worker(policy_net, pipe,
     print('finished pusher_worker ' + str(worker_num))
     return
 
+def get_depth_map(terrain_mesh_file, width = 6, height = 3, x_offset = 3, y_offset = 0):
+    n_channel = 1
+    #camera
+    pixelWidth = 100
+    pixelHeight = int(pixelWidth*height/width)
+    nearPlane = 0.05
+    farPlane = 15
+    fov = 60
+    aspect = pixelWidth / pixelHeight
 
+    #calculate the camera distance
+    camera_dist = height/2/np.tan(np.radians(fov/2))
+    #print(f"camera distance is {camera_dist}")
+
+    # Initial vectors
+    camera_vector = (0, 0, -1) # z-axis
+    up_vector = (0, 1, 0) # y-axis
+    camPos = (x_offset, y_offset, camera_dist)
+    viewMatrix = p.computeViewMatrix(camPos, np.asarray(camPos) + 0.1 * np.asarray(camera_vector), up_vector)
+    projectionMatrix = p.computeProjectionMatrixFOV(fov, aspect, nearPlane, farPlane)
+
+    img_arr = p.getCameraImage(pixelWidth,
+                                      pixelHeight,
+                                      viewMatrix,
+                                      projectionMatrix,
+                                      shadow=1,
+                                      lightDirection=[1, 1, 1] )
+
+    depth = img_arr[3]
+    depth_matix = np.asarray(depth).reshape(pixelHeight, pixelWidth)
+    depth = farPlane * nearPlane / (farPlane - (farPlane - nearPlane) * depth_matix)
+
+    # convert to dist from ground
+    depth = camera_dist - depth
+
+    if terrain_mesh_file is not None:
+        # shift so min is zero
+        dmin = np.min(depth[depth>-1])
+        # print('---- depth min ----')
+        # print(dmin)
+        depth = depth - dmin
+
+        # exclude outliers
+        depth[depth>0.2] = 0.2
+        depth[depth<0] = 0
+        depth[np.isnan(depth)] = 0
+        depth[np.isinf(depth)] = 0
+
+
+    return depth.reshape([n_channel, pixelHeight, pixelWidth])
 
 if __name__== "__main__":
-    collect_single_terr = True
+
+
+
     if collect_single_terr:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         ### Initialize and load policy
@@ -266,8 +320,13 @@ if __name__== "__main__":
         terrain_size = terrain_grid_shape
         action_size = [1]
 
-        r_int_list = np.array([[3,3,3], [3,2,3], [1,1,1], [2,2,2], [1,2,2], [2,3,3]])
-        r_int_list = np.array([[1,3,3]])
+        # null, leg, wheel, b
+        # [[1,3,3], [3,1,3], [1,1,3], [3,3,1], [1,0,1], [3,0,3]]
+        # [[3,3,3], [3,2,3], [1,1,1], [2,2,2], [1,2,2], [2,3,3]]
+        r_list = [[2,0,2], [3,3,2], [3,1,3], [3,2,2], [1,3,3], [3,1,3]]# [[3,3,3], [3,2,3], [1,1,1], [2,2,2], [1,2,2], [2,3,3]]# [[1,1,1,1,1,1]]
+        r_list = [[2,0,2]]
+        r_int_list = np.array(r_list)
+        # r_int_list = np.array([[1,3,3]])
         r_list = np.eye(N_ACTIONS)[r_int_list]
 
         # r_list = np.asarray([
@@ -289,7 +348,16 @@ if __name__== "__main__":
 
         sim_runner = simulation_runner(NUM_ENVS_TEST) #, show_GUI=True, gui_speed_factor =10
         np.random.seed(42)
-        terrain = sim_runner.randomize_terrains(terrain_block_height=0.01)
+        terrain = sim_runner.randomize_terrains(terrain_block_height=0.08)
+
+        if show_terrain:
+            import matplotlib.pyplot as plt
+            print(terrain.shape)
+            # plt.imshow(terrain, origin='lower', cmap="hot", interpolation='none')
+            plt.imshow(terrain[0][0], origin='lower', cmap="gray_r", interpolation='none')
+            plt.show()
+            exit()
+
         np.random.seed()
         reward_list = []
         r_var_list = []
@@ -311,7 +379,8 @@ if __name__== "__main__":
             # if (sim_runner.reward_function == 'Testing Proxy' or
             #     sim_runner.reward_function == 'Recorded Simulation'):
             #     time.sleep(0.1)
-            print(power.numpy())
+
+            # print(power.numpy())
             reward = rewards.mean()
             # print(rewards.numpy())
             r_var = rewards.var()
@@ -324,29 +393,33 @@ if __name__== "__main__":
             if sim_runner.is_valid:
                 # print(terrains)
                 terrain_max = terrain.max().numpy()
+                # print(' simulated ' + str(robot_name) +
+                #       ' rewards ' +
+                #       np.array2string(rewards.numpy(), precision=1)
+                #       + ' Terrain max ' + np.array2string(terrain_max, precision=3)
+                #       + ' reward_variance ' + str(r_var) + 'reward_mean ' + str(reward)
+                #       + ' energy ' + str(energy_list[-1]))
                 print(' simulated ' + str(robot_name) +
-                      ' rewards ' +
-                      np.array2string(rewards.numpy(), precision=1)
-                      + ' Terrain max ' + np.array2string(terrain_max, precision=3)
-                      + ' reward_variance ' + str(r_var) + 'reward_mean ' + str(reward)
-                      + ' energy ' + str(energy_list[-1]))
-        import matplotlib.pyplot as plt
-        # print(r_max_list, r_var_list)
-        # plt.scatter(r_max_list, r_var_list)
-        # plt.xlabel("max_distance")
-        # plt.ylabel("distance_variance")
-        # plt.show()
-        # plt.scatter(reward_list, r_var_list)
-        # plt.show()
-        plt.scatter(reward_list, energy_list)
-        plt.xlabel("mean_distance")
-        plt.ylabel("energy_cost_per_distance")
-        plt.show()
-        np.save("r_name", r_name_list)
-        np.save("r_max", r_max_list)
-        np.save("r_mean", reward_list)
-        np.save("r_var", r_var_list)
-        np.save("r_energy", energy_list)
+                      ' rewards ' + str(reward))
+
+        if draw_reward:
+            import matplotlib.pyplot as plt
+            # print(r_max_list, r_var_list)
+            # plt.scatter(r_max_list, r_var_list)
+            # plt.xlabel("max_distance")
+            # plt.ylabel("distance_variance")
+            # plt.show()
+            # plt.scatter(reward_list, r_var_list)
+            # plt.show()
+            plt.scatter(reward_list, energy_list)
+            plt.xlabel("mean_distance")
+            plt.ylabel("energy_cost_per_distance")
+            plt.show()
+            # np.save("r_name", r_name_list)
+            # np.save("r_max", r_max_list)
+            # np.save("r_mean", reward_list)
+            # np.save("r_var", r_var_list)
+            # np.save("r_energy", energy_list)
         exit()
 
     # spawn processes

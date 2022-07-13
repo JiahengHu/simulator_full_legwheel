@@ -51,9 +51,11 @@ class robot_env:
         self.foot_friction = 1.2
         self.wheel_friction = [0.8,0.8,1.8]
 
+        self.power = 0.0
         # self.foot_friction = 1.0
         # self.wheel_friction = [0.8,0.8,1.4]
         self.plane_friction = 0.8
+        self.step_count = 0
 
     # reset terrain
     def reset_terrain(self, plane_transparent=False):
@@ -116,6 +118,7 @@ class robot_env:
         p = self.p
 
         self.reset_debug_items()
+        self.step_count = 0
 
         startPosition=[0,0,0.3] # high enough that nothing touches the ground
         startOrientationRPY = [0,0,0]
@@ -125,10 +128,13 @@ class robot_env:
             startOrientationRPY[2] += (np.random.rand()*2-1)*pi/8
 
         # allow for starting yaw to be overridden by user
-        if start_xyyaw is not None: 
-            startPosition[0] = start_xyyaw[0]
-            startPosition[1] = start_xyyaw[1]
-            startOrientationRPY[2] = start_xyyaw[2]
+        if start_xyyaw is not None:
+            if start_xyyaw[0] is not None:
+                startPosition[0] = start_xyyaw[0]
+            if start_xyyaw[1] is not None:
+                startPosition[1] = start_xyyaw[1]
+            if start_xyyaw[2] is not None:
+                startOrientationRPY[2] = start_xyyaw[2]
 
         startOrientation = p.getQuaternionFromEuler(startOrientationRPY)   
 
@@ -258,10 +264,13 @@ class robot_env:
             joint_index_on_module = [] # how far along on the chain is this joint on this module?
             action_indexes =[0,0] # no actions on base
 
+            ctl_modules_types = []
+
             for i in range(6):
                 letter  = urdf_name[i]
                 if letter=='l':
                     modules_types.append(1) # module type 1 is a leg
+                    ctl_modules_types.append(1)
                     chassis_attachments.append(ii)
                     limb_attachments.append([0]) # attached to chassis
                     module_joint_is_on.extend([i,i,i]) # three joints on leg
@@ -271,6 +280,7 @@ class robot_env:
 
                 elif letter=='w':
                     modules_types.append(2) # module type 2 is a wheel
+                    ctl_modules_types.append(2)
                     chassis_attachments.append(ii)
                     module_joint_is_on.extend([i,i]) # two joints on wheel
                     joint_index_on_module.extend([0,1])
@@ -280,6 +290,7 @@ class robot_env:
 
                 elif letter=='b':
                     modules_types.append(3) # module type
+                    ctl_modules_types.append(3)
                     chassis_attachments.append(ii)
                     limb_attachments.append([0]) # attached to chassis
                     module_joint_is_on.extend([i,i,i]) # three joints on wheelleg
@@ -289,6 +300,7 @@ class robot_env:
 
                 elif letter=='n':
                     chassis_attachments.append(None)
+                    ctl_modules_types.append(0)
                     # no actions are for this module
 
 
@@ -296,6 +308,7 @@ class robot_env:
             attachments = [chassis_attachments] + limb_attachments
 
             self.modules_types = modules_types
+            self.ctl_modules_types = ctl_modules_types
             self.attachments = attachments
             self.module_joint_is_on = module_joint_is_on
             self.joint_index_on_module = joint_index_on_module
@@ -315,6 +328,8 @@ class robot_env:
                 targetValue= center + np.random.uniform(-1,1)*joint_noise, 
                 targetVelocity = 0,
                 physicsClientId=self.physicsClient )
+
+        self.power = 0
 
         # set commands to be zero
         p.setJointMotorControlArray(
@@ -603,16 +618,70 @@ class robot_env:
 
     # step function advances simulation and updates state
     # assumes u is on [-1,1] and scales it by joint max.
-    def step(self, u):
+    def step_mod(self, pos_ctl, vel_ctl, pos_idx, vel_idx, pos_f, vel_f, max_vel):
+        self.step_count += 1
         p = self.p
-        # velocity control, will use as much torque as needed to reach that velocity
-        p.setJointMotorControlArray(
-            bodyUniqueId=self.robotID, 
-            jointIndices=self.moving_joint_inds, 
-            controlMode=p.VELOCITY_CONTROL,
-            targetVelocities = u*self.moving_joint_max_velocities,
-            forces=self.moving_joint_max_torques,
-            physicsClientId=self.physicsClient)
+        if len(pos_ctl) > 0:
+            p.setJointMotorControlArray(
+                bodyUniqueId=self.robotID,
+                jointIndices=pos_idx,
+                controlMode=p.POSITION_CONTROL,
+                targetPositions=pos_ctl,
+                forces=pos_f,
+                physicsClientId=self.physicsClient)
+        if len(vel_ctl) > 0:
+            # velocity control, will use as much torque as needed to reach that velocity
+            p.setJointMotorControlArray(
+                bodyUniqueId=self.robotID,
+                jointIndices=vel_idx,
+                controlMode=p.VELOCITY_CONTROL,
+                targetVelocities=vel_ctl * max_vel,
+                forces=vel_f,
+                physicsClientId=self.physicsClient)
+
+        for sim_step in range(self.n_time_steps_per_step):
+            p.stepSimulation(physicsClientId=self.physicsClient)
+            if self.show_GUI:
+                if len(self.arrow_ids) > 0:
+                    linkWorldPosition, linkWorldOrientationQuat = p.getBasePositionAndOrientation(
+                        bodyUniqueId=self.robotID, physicsClientId=self.physicsClient)
+                    self.pos_xyz = linkWorldPosition
+                    self.draw_body_arrows()
+
+                if self.follow_with_camera and self.show_GUI:
+                    linkWorldPosition, linkWorldOrientationQuat = p.getBasePositionAndOrientation(
+                        bodyUniqueId=self.robotID, physicsClientId=self.physicsClient)
+                    self.pos_xyz = linkWorldPosition
+                    # p.resetDebugVisualizerCamera(2,0,-30,[1+self.pos_xyz[0],self.pos_xyz[1],0.2],
+                    p.resetDebugVisualizerCamera(1.5, 0, -30, [self.pos_xyz[0], self.pos_xyz[1], 0.2],
+                                                 physicsClientId=self.physicsClient)
+
+                time.sleep(self.time_step / self.sim_speed_factor)
+
+        self.update_state()
+
+    # step function advances simulation and updates state
+    # assumes u is on [-1,1] and scales it by joint max.
+    def step(self, u, mode='velocity'):
+        self.step_count += 1
+        p = self.p
+        if mode == 'position':
+            p.setJointMotorControlArray(
+                bodyUniqueId=self.robotID,
+                jointIndices=self.moving_joint_inds,
+                controlMode=p.POSITION_CONTROL,
+                targetPositions=u,
+                forces=self.moving_joint_max_torques,
+                physicsClientId=self.physicsClient)
+        else:
+            # velocity control, will use as much torque as needed to reach that velocity
+            p.setJointMotorControlArray(
+                bodyUniqueId=self.robotID,
+                jointIndices=self.moving_joint_inds,
+                controlMode=p.VELOCITY_CONTROL,
+                targetVelocities = u*self.moving_joint_max_velocities,
+                forces=self.moving_joint_max_torques,
+                physicsClientId=self.physicsClient)
 
         for sim_step in range(self.n_time_steps_per_step):
             p.stepSimulation(physicsClientId=self.physicsClient)

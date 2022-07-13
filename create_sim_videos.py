@@ -13,15 +13,15 @@ terrain_block_height = 0.01
 terrain_block_distance = None
 terrain = sim_runner.randomize_terrains(
     terrain_block_height=terrain_block_height,
-    terrain_block_distance = terrain_block_distance)
+    terrain_block_distance=terrain_block_distance)
 np.random.seed()
 
 # robot_names = ['www', 'lww', 'lwl', 'lll']
 robot_names = ['lww', 'wll', 'lnw', 'llw']# ['lwlwlw']#['wnw']# ['llwlwl']
-robot_names = ['lww']
+robot_names = ['lll']
 # terrain_block_height = sim_runner.MAX_BLOCK_HEIGHT_LOW
 # terrain_block_height = sim_runner.MAX_BLOCK_HEIGHT_HIGH
-terrain_block_heights =  np.linspace(
+terrain_block_heights = np.linspace(
                     sim_runner.MAX_BLOCK_HEIGHT_LOW+0.01,
                     sim_runner.MAX_BLOCK_HEIGHT_HIGH, len(robot_names))
 # terrain = sim_runner.randomize_terrains()
@@ -33,7 +33,8 @@ for i in range(len(robot_names)):
     terrain_block_height = terrain_block_heights[i]
 
     randomize_xyyaw = True
-    allow_early_stop = True
-    sim_runner.load_robots(robot_name, randomize_xyyaw=randomize_xyyaw)
+    allow_early_stop = False
+    start_xyyaw = [-3, None, None]
+    sim_runner.load_robots(robot_name, randomize_xyyaw=randomize_xyyaw, start_xyyaw=start_xyyaw)
     rewards = sim_runner.run_sims(n_time_steps=SIM_TIME_STEPS, allow_early_stop=allow_early_stop)
     # print(rewards)

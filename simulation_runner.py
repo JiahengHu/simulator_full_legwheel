@@ -39,6 +39,8 @@ reward_function = 'Simulation'
 # control_file = 'mbrl_v6_test10/multidesign_control_iter4.pt'
 # control_file = 'mbrl_v6_test11/multidesign_control_iter4.pt'
 control_file = 'mbrl_b_v8_test5/multidesign_control_iter3.pt'
+control_file = 'multidesign_control_iter3_b_tripod/multidesign_control_iter3_b_tripod.pt'
+neural_policy = True
 
 class simulation_runner(object):
 
@@ -394,7 +396,6 @@ class simulation_runner(object):
 
 
         envs = self.envs 
-        modules = self.modules
         record_video = self.record_video
         max_xy = self.max_xy
         terrain_randomizer = self.terrain_randomizer
@@ -458,111 +459,269 @@ class simulation_runner(object):
             try:
                 power[i_env] += env.power
             except:
-                print("Warning: power is not implemented")
+                pass
+                # print("Warning: power is not implemented")
             if env.show_GUI and (logID is not None):
                 env.p.stopStateLogging(logID)
-
         return reward, power
 
+    def cal_wheel_ctl(self, env):
+        pi = np.pi
+        env_state_i = env.get_state()
+        cur = []
+        pointer = 0
+        for module in env.ctl_modules_types:
+            if module == 2:
+                cur.append(env_state_i[1:][pointer][0])
+            else:
+                cur.append(0)
+            if module != 0: #if null, don't add pointer
+                pointer += 1
 
-    def step_envs(self, robot_alive, 
-        debug_params = None, initial_debug_param_values=None):
+        target = np.array([-pi / 3, 0, pi / 3, -pi / 3, 0, pi / 3])
+        diff = target - np.array(cur)
+
+        u = []
+        for i in range(6):
+            u.append(diff[i])
+            if i <= 2:
+                u.append(1)
+            else:
+                u.append(-1)
+        return u
+
+    def cal_leg_ctl(self, env):
+        pi = np.pi
+        dt = 1. / 240.
+        step = env.step_count
+        t = step * dt * env.n_time_steps_per_step
+        # parameters for alternating tripod
+        amp_max = pi / 12
+        amps = amp_max * np.ones([3, 6])
+        # amps[1,:] = amps[1,:] + pi/8 # boost step height
+        # amps[2,:] = amps[1,:] + pi/8 # boost step height
+        period = 1
+        const_offsets = np.array([[1, 0, -1, 1, 0, -1],
+                                  [0, 0, 0, 0, 0, 0],
+                                  [0, 0, 0, 0, 0,
+                                   0]]) * np.pi / 8  # offset front and leg base angles a little
+        phase_offsets = np.array([
+            [0.5, -0.5, 0.5, -0.5, 0.5, -0.5],
+            [1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]]) * np.pi
+        # Create alt tripod leg angles
+        joint_pos_command = []
+        amps[0, 0:3] = amp_max * np.ones(3) * (-1)
+        amps[0, 3:6] = amp_max * np.ones(3) * (1)
+        amps[0, :] = np.clip(amps[0, :], -amp_max, amp_max)
+        for i in range(6):
+            leg_angles_i = amps[:, i] * np.sin(t * 2 * pi / period - phase_offsets[:, i])
+            leg_angles_i[1:] = np.clip(leg_angles_i[2:], 0,
+                                       np.inf)  # convert up-down motion to up-flat motion
+            leg_angles_i += const_offsets[:, i]
+            joint_pos_command.append(leg_angles_i)
+
+        #hardcoded for now
+        moving_joint_centers = np.asarray([1.570796326794, 0.0, 1.5705]*6)
+
+        joint_pos_command = np.concatenate(joint_pos_command) + moving_joint_centers
+        return joint_pos_command
+
+    def step_envs(self, robot_alive,
+                  debug_params=None, initial_debug_param_values=None):
 
         if time_program:
             whole_start = datetime.now()
 
-        envs = self.envs 
-        modules = self.modules
-        record_video = self.record_video
-        max_xy = self.max_xy
+        envs = self.envs
         terrain_randomizer = self.terrain_randomizer
         num_envs = len(envs)
 
-
-        module_action_len= list(np.diff(envs[0].action_indexes))
-        attachments = envs[0].attachments
-        n_modules = len(envs[0].modules_types)
-
-        env_states = []
-        goals_world = []
-        for env in envs:
-            chassis_yaw = env.pos_rpy[-1]
-            chassis_x = env.pos_xyz[0]
-            chassis_y = env.pos_xyz[1]
-            
-            # set direction to head
-            desired_xyyaw = np.zeros(3)
-            T= 20
-            dt = 20./240.
-            speed_scale_xy = (T*dt)*0.314*(1./0.75)
-            speed_scale_yaw = (T*dt)*1.1*(1./0.75)
-
-            #TODO: play with it (turn 4 to 3, turn 2 to 0.1)
-            desired_xyyaw[0] = speed_scale_xy
-            desired_xyyaw[1] = -speed_scale_xy*chassis_y*4
-            desired_xyyaw[1] = np.clip(desired_xyyaw[1], -speed_scale_xy, speed_scale_xy)
-            # force to turn toward the heading
-            desired_xyyaw[2] = -speed_scale_yaw*chassis_yaw/2
-            desired_xyyaw[2] = np.clip(desired_xyyaw[2], -speed_scale_yaw,speed_scale_yaw)
-
-            env_state_i = env.get_state()
-            env_states.append(env_state_i)
-
-            goals_world.append(torch.tensor(desired_xyyaw,
-                    dtype=torch.float32, device=device))
 
         # check if debug params have changed
         terrain_changed = False
         terrain_value = None
         if debug_params is not None:
             # for i_param in range(len(debug_params)):
-            param_now = env.p.readUserDebugParameter(debug_params[0])
-            if not(param_now == initial_debug_param_values[0]
-                ) and terrain_randomizer is not None:
-                terrain_randomizer.set_block_heights([envs[0].p],param_now)
+            param_now = envs[-1].p.readUserDebugParameter(debug_params[0])
+            if not (param_now == initial_debug_param_values[0]
+            ) and terrain_randomizer is not None:
+                terrain_randomizer.set_block_heights([envs[0].p], param_now)
                 initial_debug_param_values[0] = param_now
                 terrain_changed = True
                 terrain_value = param_now
 
+        ################# temp hyperparams   #################
+        module_to_n_joints = [0, 3, 2, 4]  #n, l, w, b
 
-        # stack up and pass to gnn in batch
-        goals_world = torch.stack(goals_world)
-        states = [torch.tensor( np.stack(s),
-                         dtype=torch.float32, device=device)
-                         for s in list(zip(*env_states)) ]
-
-        node_inputs = create_control_inputs(states, goals_world)
-
-        for module in modules: # this prevents the LSTM in the GNN nodes from 
-            # learning relations over time, only over internal prop steps.
-            module.reset_hidden_states(num_envs)
-
-        if time_program:
-            prop_start = datetime.now()
-
-        with torch.no_grad():
-            out_mean, out_var = pgnnc.run_propagations(
-                modules, attachments, 2, node_inputs, device)
-            u_out_mean = []
-            tau_out_mean = []
-            for mm in range(n_modules):
-                u_out_mean.append(out_mean[mm][:,:module_action_len[mm]])
-                tau_out_mean.append(out_mean[mm][:,module_action_len[mm]:])
-            u_np = torch.cat(u_out_mean,-1).numpy()
-            # tau_np = torch.cat(tau_out_mean,-1).numpy()
-
-        if time_program:
-            print(f"network prop takes {datetime.now() - prop_start}")
 
         if time_program:
             step_start = datetime.now()
         for i_env in range(num_envs):
             if robot_alive[i_env]:
                 env = envs[i_env]
-                u = u_np[i_env, :]
-                env.step(u)
+
+                leg_ctl = self.cal_leg_ctl(env)
+                wheel_ctl = self.cal_wheel_ctl(env)
+                torq_limit = env.moving_joint_max_torques
+
+                #TODO: seperate out the joint indices
+                pos_ctl_joint_idx = []
+                pos_u = []
+                pos_forces = []
+                vel_ctl_joint_idx = []
+                vel_u = []
+                vel_forces = []
+                max_vel = []
+                cur_joint = 0
+
+
+                for i in range(len(env.ctl_modules_types)):
+                    mod_type = env.ctl_modules_types[i]
+                    ctl_len = module_to_n_joints[mod_type]
+
+                    if mod_type == 0: # null
+                        pass
+                    elif mod_type == 1: #leg
+                        pos_ctl_joint_idx = np.concatenate([pos_ctl_joint_idx,
+                                                             env.moving_joint_inds[cur_joint:cur_joint+ctl_len]])
+
+                        pos_u = np.concatenate([pos_u, leg_ctl[i*ctl_len:(i+1)*ctl_len]])
+                        pos_forces = np.concatenate([pos_forces, torq_limit[cur_joint:cur_joint+ctl_len]])
+                        cur_joint += ctl_len
+                    elif mod_type == 2: #wheel
+                        vel_ctl_joint_idx = np.concatenate([vel_ctl_joint_idx,
+                                                            env.moving_joint_inds[cur_joint:cur_joint+ctl_len]])
+                        vel_u = np.concatenate([vel_u, wheel_ctl[i*ctl_len:(i+1)*ctl_len]])
+                        vel_forces = np.concatenate([vel_forces, torq_limit[cur_joint:cur_joint+ctl_len]])
+                        max_vel = np.concatenate([max_vel, env.moving_joint_max_velocities[cur_joint:cur_joint+ctl_len]])
+                        cur_joint += ctl_len
+                    elif mod_type == 3: #leg-wheel, vel control the wheel, pos control the leg
+                        ctl_len = 3
+                        pos_ctl_joint_idx = np.concatenate([pos_ctl_joint_idx,
+                                                            env.moving_joint_inds[cur_joint:cur_joint + ctl_len]])
+
+                        pos_u = np.concatenate([pos_u, leg_ctl[i * ctl_len:(i + 1) * ctl_len]])
+                        pos_forces = np.concatenate([pos_forces, torq_limit[cur_joint:cur_joint + ctl_len]])
+                        cur_joint += ctl_len
+
+                        ctl_len = 1
+                        vel_ctl_joint_idx = np.concatenate([vel_ctl_joint_idx,
+                                                            env.moving_joint_inds[cur_joint:cur_joint + ctl_len]])
+                        vel_u = np.concatenate([vel_u, wheel_ctl[i * ctl_len + 1:(i + 1) * ctl_len + 1]])
+                        # vel_u = np.concatenate([vel_u, [0]])
+                        vel_forces = np.concatenate([vel_forces, torq_limit[cur_joint:cur_joint + ctl_len]])
+                        max_vel = np.concatenate(
+                            [max_vel, env.moving_joint_max_velocities[cur_joint:cur_joint + ctl_len]])
+                        cur_joint += ctl_len
+
+                env.step_mod(pos_u, vel_u, pos_ctl_joint_idx, vel_ctl_joint_idx,
+                             pos_forces, vel_forces, max_vel)
                 # power = np.sum(np.abs(env.joint_torques * env.joint_vels))
         if time_program:
             print(f"env step takes {datetime.now() - step_start}")
             print(f"whole env step takes {datetime.now() - whole_start}")
         return terrain_changed, terrain_value
+
+    if neural_policy:
+        #previous version
+        def step_envs(self, robot_alive,
+            debug_params = None, initial_debug_param_values=None):
+
+            if time_program:
+                whole_start = datetime.now()
+
+            envs = self.envs
+            modules = self.modules
+            record_video = self.record_video
+            max_xy = self.max_xy
+            terrain_randomizer = self.terrain_randomizer
+            num_envs = len(envs)
+
+
+            module_action_len= list(np.diff(envs[0].action_indexes))
+            attachments = envs[0].attachments
+            n_modules = len(envs[0].modules_types)
+
+            env_states = []
+            goals_world = []
+            for env in envs:
+                chassis_yaw = env.pos_rpy[-1]
+                chassis_x = env.pos_xyz[0]
+                chassis_y = env.pos_xyz[1]
+
+                # set direction to head
+                desired_xyyaw = np.zeros(3)
+                T= 20
+                dt = 20./240.
+                speed_scale_xy = (T*dt)*0.314*(1./0.75)
+                speed_scale_yaw = (T*dt)*1.1*(1./0.75)
+
+                #TODO: play with it (turn 4 to 3, turn 2 to 0.1)
+                desired_xyyaw[0] = speed_scale_xy
+                desired_xyyaw[1] = -speed_scale_xy*chassis_y*4
+                desired_xyyaw[1] = np.clip(desired_xyyaw[1], -speed_scale_xy, speed_scale_xy)
+                # force to turn toward the heading
+                desired_xyyaw[2] = -speed_scale_yaw*chassis_yaw/2
+                desired_xyyaw[2] = np.clip(desired_xyyaw[2], -speed_scale_yaw,speed_scale_yaw)
+
+                env_state_i = env.get_state()
+                env_states.append(env_state_i)
+
+                goals_world.append(torch.tensor(desired_xyyaw,
+                        dtype=torch.float32, device=device))
+
+            # check if debug params have changed
+            terrain_changed = False
+            terrain_value = None
+            if debug_params is not None:
+                # for i_param in range(len(debug_params)):
+                param_now = env.p.readUserDebugParameter(debug_params[0])
+                if not(param_now == initial_debug_param_values[0]
+                    ) and terrain_randomizer is not None:
+                    terrain_randomizer.set_block_heights([envs[0].p],param_now)
+                    initial_debug_param_values[0] = param_now
+                    terrain_changed = True
+                    terrain_value = param_now
+
+
+            # stack up and pass to gnn in batch
+            goals_world = torch.stack(goals_world)
+            states = [torch.tensor( np.stack(s),
+                             dtype=torch.float32, device=device)
+                             for s in list(zip(*env_states)) ]
+
+            node_inputs = create_control_inputs(states, goals_world)
+
+            for module in modules: # this prevents the LSTM in the GNN nodes from
+                # learning relations over time, only over internal prop steps.
+                module.reset_hidden_states(num_envs)
+
+            if time_program:
+                prop_start = datetime.now()
+
+            with torch.no_grad():
+                out_mean, out_var = pgnnc.run_propagations(
+                    modules, attachments, 2, node_inputs, device)
+                u_out_mean = []
+                tau_out_mean = []
+                for mm in range(n_modules):
+                    u_out_mean.append(out_mean[mm][:,:module_action_len[mm]])
+                    tau_out_mean.append(out_mean[mm][:,module_action_len[mm]:])
+                u_np = torch.cat(u_out_mean,-1).numpy()
+                # tau_np = torch.cat(tau_out_mean,-1).numpy()
+
+            if time_program:
+                print(f"network prop takes {datetime.now() - prop_start}")
+
+            if time_program:
+                step_start = datetime.now()
+            for i_env in range(num_envs):
+                if robot_alive[i_env]:
+                    env = envs[i_env]
+                    u = u_np[i_env, :]
+                    env.step(u)
+                    # power = np.sum(np.abs(env.joint_torques * env.joint_vels))
+            if time_program:
+                print(f"env step takes {datetime.now() - step_start}")
+                print(f"whole env step takes {datetime.now() - whole_start}")
+            return terrain_changed, terrain_value
