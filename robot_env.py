@@ -522,6 +522,7 @@ class robot_env:
                 current_joint+=1
                 module_state=np.append(module_state,dtheta2)
 
+            self.power += np.sum(np.abs(self.joint_torques * self.joint_vels)) * self.time_step
             module_state_list.append(module_state)
 
         self.full_state = module_state_list

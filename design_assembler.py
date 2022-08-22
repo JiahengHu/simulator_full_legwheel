@@ -44,7 +44,8 @@ def add_module(design_in, current_module, max_n_modules, action):
     design_out[ num_module_types*current_module + action] = 1
     design_out[ num_module_types*num_module_types:] = 0
     if current_module < (max_n_modules-1):
-        design_out[ num_module_types*num_module_types + current_module+1] = 1
+        # There is definitely some bug here: what does this line do?
+        design_out[ max_n_modules*num_module_types + current_module+1] = 1
 
     return design_out, module_penalties[action]
 

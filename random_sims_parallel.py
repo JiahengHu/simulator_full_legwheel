@@ -52,6 +52,7 @@ cpu_count = torch.multiprocessing.cpu_count()
 #     NUM_SIM_WORKERS = 2
 
 NUM_SIM_WORKERS = 1 # for testing
+NUM_SIM_WORKERS = 4
 
 N_ACTIONS = num_module_types
 MAX_N_MODULES = 3
@@ -59,12 +60,13 @@ REPLAY_MEMORY_SIZE = 5000
 NUM_ENVS = 3 # number of environments to run in each worker.
 # ^ They will all have the same robot and terrain, and the policy will be called in batches.
 SIM_TIME_STEPS = 250 # determines the farthest possible travel distance
-NUM_EPISODES = 10000
+NUM_EPISODES = REPLAY_MEMORY_SIZE
 
 # testing parameters
-collect_single_terr = True
+collect_single_terr = False
 show_terrain = False
 draw_reward = True
+test_terrain_height = 0.01
 
 def run_episode(policy_net,
             pipe,
@@ -78,7 +80,8 @@ def run_episode(policy_net,
     # initialize empty robot batch
     designs = torch.zeros(n_designs, N_ACTIONS*MAX_N_MODULES + MAX_N_MODULES)
     designs[:, N_ACTIONS*MAX_N_MODULES] = 1 # indicate which port adding now
-    
+    # print(designs)
+
     # loop dqn until done:
     for i_dqn in range(MAX_N_MODULES):
 
@@ -92,9 +95,13 @@ def run_episode(policy_net,
         #     actions, state_action_values = select_max_action(policy_net,designs,
         #                      terrains)
 
-        # Random module added
-        actions = torch.randint(low=0, high=N_ACTIONS, size=(n_designs,))
-        # action_inds = torch.randint(0, N_ACTIONS, (designs.shape[0],))
+        # This is to make sure that the action is valid: only allow none in the middle
+        if i_dqn!= 1:
+            actions = torch.randint(low=1, high=N_ACTIONS, size=(n_designs,))
+        else:
+            # Random module added
+            actions = torch.randint(low=0, high=N_ACTIONS, size=(n_designs,))
+            # action_inds = torch.randint(0, N_ACTIONS, (designs.shape[0],))
 
         # add a module
         next_designs = torch.zeros_like(designs)
@@ -152,7 +159,7 @@ def run_episode(policy_net,
                     r_var = r_var.numpy()
 
                     # for calculating the energy
-                    r_var = power.mean().numpy() / reward
+                    power = power.mean().numpy() / reward
 
                     # print(non_final_i)
                     # print(des_i)
@@ -161,8 +168,11 @@ def run_episode(policy_net,
                     # try:
                     # send only when reward > 0
                     if reward >= 0:
+                        print(f"robo name: {robot_name}, reward:{reward}, power:{power}")
                         pipe.send([des_i, terr_i, action,
-                                   next_des_i, reward, non_final_i, r_var])
+                                   next_des_i, reward, non_final_i, power])
+                    else:
+                        print("something wrong: encountered invalid")
 
 
             else:
@@ -323,8 +333,8 @@ if __name__== "__main__":
         # null, leg, wheel, b
         # [[1,3,3], [3,1,3], [1,1,3], [3,3,1], [1,0,1], [3,0,3]]
         # [[3,3,3], [3,2,3], [1,1,1], [2,2,2], [1,2,2], [2,3,3]]
-        r_list = [[2,0,2], [3,3,2], [3,1,3], [3,2,2], [1,3,3], [3,1,3]]# [[3,3,3], [3,2,3], [1,1,1], [2,2,2], [1,2,2], [2,3,3]]# [[1,1,1,1,1,1]]
-        r_list = [[2,0,2]]
+        r_list = [[2,0,2], [3,3,2], [1,1,1], [3,2,2], [1,3,3], [1,1,2], [2,2,2]]# [[3,3,3], [3,2,3], [1,1,1], [2,2,2], [1,2,2], [2,3,3]]# [[1,1,1,1,1,1]]
+        # r_list = [[2,0,2]]
         r_int_list = np.array(r_list)
         # r_int_list = np.array([[1,3,3]])
         r_list = np.eye(N_ACTIONS)[r_int_list]
@@ -348,7 +358,7 @@ if __name__== "__main__":
 
         sim_runner = simulation_runner(NUM_ENVS_TEST) #, show_GUI=True, gui_speed_factor =10
         np.random.seed(42)
-        terrain = sim_runner.randomize_terrains(terrain_block_height=0.08)
+        terrain = sim_runner.randomize_terrains(terrain_block_height=test_terrain_height)
 
         if show_terrain:
             import matplotlib.pyplot as plt
@@ -400,7 +410,7 @@ if __name__== "__main__":
                 #       + ' reward_variance ' + str(r_var) + 'reward_mean ' + str(reward)
                 #       + ' energy ' + str(energy_list[-1]))
                 print(' simulated ' + str(robot_name) +
-                      ' rewards ' + str(reward))
+                      ' rewards ' + str(reward) + " energy" + str(power.mean().numpy() / reward_list[-1]))
 
         if draw_reward:
             import matplotlib.pyplot as plt
@@ -511,7 +521,7 @@ if __name__== "__main__":
                             torch.save(replay_memory.memory_next_state, "designs.pt")
                             torch.save(replay_memory.memory_terrain, "terrains.pt")
                             torch.save(replay_memory.memory_reward, "rewards.pt")
-                            torch.save(replay_memory.memory_rvar, "rvar.pt")  # this is actually energy
+                            torch.save(replay_memory.memory_rvar, "energy.pt")  # this is actually energy
                             print(replay_memory.memory_terrain.shape)
 
 
@@ -533,4 +543,10 @@ if __name__== "__main__":
 
 
     print('Done training')
+    print(f"Saving data")
+    torch.save(replay_memory.memory_next_state, "designs.pt")
+    torch.save(replay_memory.memory_terrain, "terrains.pt")
+    torch.save(replay_memory.memory_reward, "rewards.pt")
+    torch.save(replay_memory.memory_rvar, "energy.pt")  # this is actually energy
+    print(replay_memory.memory_terrain.shape)
 

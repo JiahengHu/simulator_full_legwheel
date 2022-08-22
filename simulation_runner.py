@@ -201,36 +201,42 @@ class simulation_runner(object):
         return self.terrain_grid
 
     def randomize_terrains(self,
-        terrain_block_height = None,
-        terrain_block_distance=None):
+                           terrain_block_height=None,
+                           terrain_block_distance=None, fixed_terrain=False, rd_seed=None):
         # randomize the terrains
 
+        # ########## tmp ##############
+        if fixed_terrain:
+            new_seed = 0
+            np.random.seed(new_seed)
+        elif rd_seed is not None:
+            np.random.seed(rd_seed)
 
         if reward_function == 'Simulation':
 
             # pick a random seed for which all the terrains will use,
             # so that they all get the same new terrain
-            # if self.show_GUI and self.record_video:
-            #     new_seed = 0
-            #     np.random.seed(new_seed)
-            #     torch.manual_seed(new_seed)
-
+            if self.show_GUI and self.record_video:
+                new_seed = 0
+                np.random.seed(new_seed)
+                torch.manual_seed(new_seed)
                 # make videos where all robots have the same terrain
             # else:
             #     new_seed = np.random.randint(4294967295)
 
-
             if terrain_block_height is None:
-                terrain_block_height   = np.random.uniform(self.MAX_BLOCK_HEIGHT_LOW,
-                         self.MAX_BLOCK_HEIGHT_LOW + (self.MAX_BLOCK_HEIGHT_HIGH - self.MAX_BLOCK_HEIGHT_LOW) * self.terrain_scaling)
+                terrain_block_height = np.random.uniform(self.MAX_BLOCK_HEIGHT_LOW,
+                                                         self.MAX_BLOCK_HEIGHT_LOW + (
+                                                                     self.MAX_BLOCK_HEIGHT_HIGH - self.MAX_BLOCK_HEIGHT_LOW) * self.terrain_scaling)
             if terrain_block_distance is None:
                 terrain_block_distance = np.random.uniform(
-                     self.MIN_BLOCK_DISTANCE_HIGH + (self.MIN_BLOCK_DISTANCE_LOW - self.MIN_BLOCK_DISTANCE_HIGH) * self.terrain_scaling,
-                     self.MIN_BLOCK_DISTANCE_HIGH
-                     )
+                    self.MIN_BLOCK_DISTANCE_HIGH + (
+                                self.MIN_BLOCK_DISTANCE_LOW - self.MIN_BLOCK_DISTANCE_HIGH) * self.terrain_scaling,
+                    self.MIN_BLOCK_DISTANCE_HIGH
+                )
 
             for i_env in range(self.num_envs):
-                self.envs[i_env].reset_terrain() # this seems to fix the memory leak
+                self.envs[i_env].reset_terrain()  # this seems to fix the memory leak
 
             # randomizes terrain with poisson sampling blocks
             self.terrain_randomizer.reset()
@@ -246,6 +252,9 @@ class simulation_runner(object):
 
         # measure their heights
         terrains = self.measure_terrains()
+
+        # make sure in the end we reset random seed
+        np.random.seed()
 
         return terrains
 
